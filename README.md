@@ -216,9 +216,6 @@ web/
 
 ---
 
-## Contributing
-Issues and PRs are welcome. Please run `npm run lint` before submitting.
-
 ## License
 Add your project's license here (e.g., MIT). If none is specified, all rights reserved.
 
