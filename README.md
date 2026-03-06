@@ -149,14 +149,7 @@ web/
 └─ package.json
 ```
 
----
 
-## Notes & limitations
-- Sessions are in-memory; restarting the server clears them
-- Intended for trusted networks; put behind TLS/proxy for internet use
-- CORS defaults to permissive in non-production; lock it down in prod
-
----
 
 ## License
 Add your project's license here (e.g., MIT). If none is specified, all rights reserved.
