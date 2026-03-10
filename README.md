@@ -109,26 +109,7 @@ Timing accuracy:
 ---
 
 
-## Architecture (Mermaid)
 
-```mermaid
-sequenceDiagram
-    autonumber
-    participant Controller as Controller (Next.js)
-    participant Display as Display (Next.js)
-    participant Server as Server (Express + WS)
-
-    Controller->>Server: POST /api/session {presetMs, allowOvertime}
-    Server-->>Controller: {code, controllerToken, URLs}
-    Controller->>Server: WS /ws join {role:"controller", code, token}
-    Display->>Server: WS /ws join {role:"display", code}
-    Controller->>Server: action (start | pause | resume | reset | adjust | setDuration | setOvertime | end)
-    Server-->>Controller: state {...}
-    Server-->>Display: state {...}
-    Note over Server: Broadcasts presence and state to all clients
-```
-
----
 
 ## Folder structure (high level)
 ```text
