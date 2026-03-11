@@ -111,24 +111,7 @@ Timing accuracy:
 
 
 
-## Folder structure (high level)
-```text
-web/
-├─ server/
-│  └─ server.js          # REST + WS (no DB)
-├─ src/
-│  ├─ app/
-│  │  ├─ page.tsx        # Home
-│  │  ├─ control/page.tsx
-│  │  └─ display/page.tsx
-│  └─ lib/
-│     ├─ wsClient.ts     # API/WS URL helpers & types
-│     └─ time.ts         # formatDuration
-├─ next.config.ts
-├─ postcss.config.mjs
-├─ eslint.config.mjs
-└─ package.json
-```
+
 
 
 
