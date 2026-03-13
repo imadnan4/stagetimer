@@ -46,7 +46,7 @@ Open `http://localhost:3000`.
 - `dev:all`: Run both server and web concurrently
 - `build`: Production build for the web app
 - `start`: Start the built Next.js app
-- `lint`: Lint the codebase
+
 
 ---
 
