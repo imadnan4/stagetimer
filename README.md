@@ -25,8 +25,7 @@ Prerequisites:
 Install dependencies:
 ```bash
 npm install
-# or
-bun install
+
 ```
 
 Run web and server together (recommended during development):
