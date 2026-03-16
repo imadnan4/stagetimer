@@ -7,7 +7,7 @@ Solution: A zero-setup, browser-based stage timer with one controller and unlimi
 Stagetimer Web is a Next.js app backed by a tiny Express + WebSocket server. A presenter or stage manager creates a session (controller) and others join as displays using a short code. The controller starts/pauses/resets the clock, adjusts time, and toggles overtime while all connected displays stay perfectly in sync.
 
 ### Highlights
-- Real-time sync via WebSockets (`ws`)
+- Real-time sync via WebSockets 
 - One active controller per session; many displays
 - 6-character session codes; no accounts, no DB
 - Presets, manual minute/second inputs, ±30s adjust
