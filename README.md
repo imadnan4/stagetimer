@@ -21,99 +21,167 @@ Stagetimer Web is a Next.js app backed by a tiny Express + WebSocket server. A p
 Prerequisites:
 - Node.js 18+ (or Bun latest)
 - Free ports: 3000 (web) and 8787 (API/WS)
+## Stagetimer (Web)
+
+Stagetimer is a browser-based presentation timer with one controller and many displays, synchronized in real time.
+
+## What this app includes
+- Next.js 15 app (App Router) for UI routes:
+  - `/` create or join
+  - `/control` controller view
+  - `/display?code=ABC123` display view
+- Express + WebSocket backend in `server/server.js`
+- Real-time session state sync via WebSocket messages (`join`, `action`, `state`, `presence`, `error`)
+
+## Tech stack
+- Next.js 15, React 19, TypeScript
+- Tailwind CSS v4
+- Express + `ws`
+
+## Local development
+
+Prerequisites:
+- Node.js 18+
+- Free ports: `3000` (web) and `8787` (API/WS)
 
 Install dependencies:
+
 ```bash
 npm install
-
 ```
 
-Run web and server together (recommended during development):
+Run frontend and backend together:
+
 ```bash
 npm run dev:all
-# or with Bun
-npm run dev:all:bun
 ```
 
 Open `http://localhost:3000`.
 
----
-
 ## Scripts
 - `dev`: Next.js dev server (Turbopack)
-- `server`: Express + WebSocket server on port 8787
-- `dev:all`: Run both server and web concurrently
-- `build`: Production build for the web app
-- `start`: Start the built Next.js app
+- `server`: backend server (`node server/server.js`)
+- `dev:all`: run both frontend and backend
+- `build`: Next.js production build
+- `start`: run Next.js production server
 
+## Environment variables
 
----
+Use `.env.example` as the source of truth.
 
-## Tech stack
-- Next.js 15 (App Router), React 19, TypeScript
-- Tailwind CSS v4
-- Express (REST) + `ws` (WebSocket)
-- ESLint (flat config)
+Frontend (Netlify build env):
+- `NEXT_PUBLIC_API_URL` example: `https://your-backend.railway.app`
+- `NEXT_PUBLIC_WS_URL` example: `wss://your-backend.railway.app/ws`
 
----
+Backend (Railway runtime env):
+- `NODE_ENV=production`
+- `PUBLIC_ORIGIN=https://your-site.netlify.app`
+- `CORS_ALLOW_ALL=0`
+- `SESSION_TTL_MINUTES=120`
+- `SESSION_CODE_ALPHABET=23456789ABCDEFGHJKMNPQRSTUVWXYZ`
+- `PORT=8787` (local fallback; Railway may inject its own `PORT`)
 
-## Environment configuration
+If frontend env vars are not set, the app infers API/WS endpoint from browser host + port `8787`.
 
-Server (`server/server.js`):
-- `PORT` (default `8787`): API/WS port
-- `PUBLIC_ORIGIN` (default `http://localhost:3000`): allowed origin when CORS is restricted
-- `CORS_ALLOW_ALL` (`1` to allow all; default allows all in non-production)
-- `SESSION_TTL_MINUTES` (default `120`): session time-to-live
-- `SESSION_CODE_ALPHABET` (default `23456789ABCDEFGHJKMNPQRSTUVWXYZ`)
+## Deployment architecture
 
-Client (`src/lib/wsClient.ts`):
-- `NEXT_PUBLIC_API_URL` (e.g., `https://api.example.com:8787`)
-- `NEXT_PUBLIC_WS_URL` (e.g., `wss://api.example.com:8787/ws`)
+This project requires a persistent WebSocket server.
 
-If these client env vars are not set, the app infers API/WS URLs from the current browser location using port `8787`.
+- Frontend: deploy to Netlify
+- Backend (`server/server.js`): deploy to Railway
 
----
+## Deployment runbook (Railway + Netlify CLI)
 
-## Production
+### 1. Deploy backend to Railway
 
-Build the web app and run both services:
+1. Create a Railway service from this repo.
+2. Set start command:
+
 ```bash
-npm run build
-npm run start       # Next.js on :3000
-node server/server.js  # Express+WS on :8787
+node server/server.js
 ```
 
-Recommended:
-- Put the API/WS behind TLS and a reverse proxy (e.g., Nginx) and set `NEXT_PUBLIC_API_URL` / `NEXT_PUBLIC_WS_URL` accordingly
-- Lock down CORS with `PUBLIC_ORIGIN` and disable `CORS_ALLOW_ALL`
-- Use a process manager for the Node server (e.g., PM2, systemd)
+3. Set Railway variables:
+	- `NODE_ENV=production`
+	- `PUBLIC_ORIGIN` temporary value (replace after Netlify production URL is final)
+	- `CORS_ALLOW_ALL=0`
+	- Optional: `SESSION_TTL_MINUTES`, `SESSION_CODE_ALPHABET`
+4. Deploy and copy backend URL, for example:
+	- `https://your-backend.railway.app`
+5. Validate backend:
 
----
+```bash
+curl https://your-backend.railway.app/api/health
+```
 
-## Features in detail
+Expected response includes `{"ok":true}`.
 
-Frontend routes:
-- `/` home: create or join
-- `/control` controller: creates a new session, shows code, performs actions
-- `/display?code=ABC123` display: shows the big timer synced to the session
+### 2. Install and authenticate Netlify CLI
 
-Presence and control:
-- One active controller per session (enforced on the server)
-- Any number of displays can join by code
-- Actions: start, pause, resume, reset, set duration, ±30s adjust, toggle overtime, end session
+```bash
+npm install -g netlify-cli
+netlify login
+```
 
-Timing accuracy:
-- Server sends `serverNow` timestamps; client computes `clockOffsetMs` to animate smoothly between authoritative state updates
+### 3. Initialize and link Netlify site
 
----
+Run from project root:
 
+```bash
+netlify init
+```
 
+This links the local project and creates `.netlify/state.json`.
 
+### 4. Set Netlify environment variables
 
+```bash
+netlify env:set NEXT_PUBLIC_API_URL https://your-backend.railway.app --context production
+netlify env:set NEXT_PUBLIC_WS_URL wss://your-backend.railway.app/ws --context production
+```
 
+### 5. Dry-run build and real build
 
+```bash
+netlify build --dry
+netlify build
+```
 
+### 6. Draft deploy first
+
+```bash
+netlify deploy --build --alias stagetimer-draft
+```
+
+Test full flow on the draft URL:
+- create session
+- open controller and display
+- start/pause/resume/reset/+30s/-30s/end
+
+### 7. Production deploy
+
+```bash
+netlify deploy --build --prod
+```
+
+### 8. Final CORS alignment
+
+Update Railway backend variable:
+- `PUBLIC_ORIGIN=<your-final-netlify-production-url>`
+
+Redeploy Railway (if required by Railway environment update), then re-test one full session.
+
+## Netlify config
+
+The repo includes `netlify.toml` with:
+- build command
+- Node version for build environment
+- local `netlify dev` mapping
+
+## Notes
+- This project uses in-memory sessions (no database). Active sessions are lost on backend restart.
+- For reliability, use Railway auto-restart and monitor backend logs.
 
 ## License
-Add your project's license here (e.g., MIT). If none is specified, all rights reserved.
+Add your project license (for example MIT). If unspecified, all rights reserved.
 

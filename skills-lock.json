@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "skills": {
+    "netlify-deploy": {
+      "source": "openai/skills",
+      "sourceType": "github",
+      "computedHash": "1c8b071c2673df67a4ed681bd5c06e236c7a9ca7265cb1088a54f2ef3b906f9e"
+    }
+  }
+}
