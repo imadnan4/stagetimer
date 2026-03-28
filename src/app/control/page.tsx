@@ -1,17 +1,22 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatDuration } from "@/lib/time";
-import { apiBase, wsBase, type ServerMessage } from "@/lib/wsClient";
+import { apiBase, wsBase, type ServerMessage, type TimerStatus } from "@/lib/wsClient";
+
+declare global {
+  interface Window {
+    __timer_ws?: WebSocket;
+  }
+}
 
 export default function ControlPage() {
   const router = useRouter();
   const [presetMs, setPresetMs] = useState(5 * 60 * 1000);
   const [allowOvertime, setAllowOvertime] = useState(false);
-  const [status, setStatus] = useState<"idle" | "running" | "paused" | "completed" | "overtime">("idle");
+  const [status, setStatus] = useState<TimerStatus>("idle");
   const [code, setCode] = useState<string | null>(null);
-  const [token, setToken] = useState<string | null>(null);
   const [counts, setCounts] = useState({ controllers: 1, displays: 0 });
   const [error, setError] = useState<string | null>(null);
   const [startTime, setStartTime] = useState<number | null>(null);
@@ -22,7 +27,9 @@ export default function ControlPage() {
   const wsRef = useRef<WebSocket | null>(null);
 
   // Create session on first render
-  useMemo(() => {
+  useEffect(() => {
+    let cancelled = false;
+
     (async () => {
       try {
         const res = await fetch(`${apiBase()}/api/session`, {
@@ -31,8 +38,8 @@ export default function ControlPage() {
           body: JSON.stringify({ presetMs, allowOvertime })
         });
         const json = await res.json();
+        if (cancelled) return;
         setCode(json.code);
-        setToken(json.controllerToken);
         // open WS and join as controller
         const ws = new WebSocket(wsBase());
         ws.onopen = () => {
@@ -40,10 +47,10 @@ export default function ControlPage() {
         };
         ws.onmessage = (ev) => {
           const msg: ServerMessage = JSON.parse(ev.data);
-          if ((msg as any).type === 'error') {
-            setError((msg as any).message);
+          if (msg.type === 'error') {
+            setError(msg.message);
             setSessionEnded(true);
-            setStatus('idle' as any);
+            setStatus('idle');
             setStartTime(null);
             setPauseAccumulated(0);
             setRemaining(presetMs);
@@ -54,7 +61,7 @@ export default function ControlPage() {
             // compute server/client clock offset using serverNow timestamp
             const clientNow = Date.now();
             setClockOffsetMs(msg.serverNow - clientNow);
-            setStatus(msg.status as any);
+            setStatus(msg.status);
             setPresetMs(msg.presetDurationMs);
             setAllowOvertime(msg.allowOvertime);
             setStartTime(msg.startTime);
@@ -72,12 +79,21 @@ export default function ControlPage() {
           }
         };
         // attach action helpers
-        (window as any).__timer_ws = ws;
+        window.__timer_ws = ws;
         wsRef.current = ws;
       } catch (e) {
         console.error('Failed to create session', e);
       }
     })();
+
+    return () => {
+      cancelled = true;
+      try {
+        wsRef.current?.close();
+      } catch {}
+      wsRef.current = null;
+      delete window.__timer_ws;
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -117,7 +133,7 @@ export default function ControlPage() {
           </div>
           <div className="flex gap-3">
             <button className="rounded-xl bg-white/10 border border-white/10 px-4 h-11">Show QR</button>
-            <button onClick={() => (window as any).__timer_ws?.send(JSON.stringify({ type: 'action', action: 'end' }))} className="rounded-xl bg-red-500/90 hover:bg-red-500 px-4 h-11">End</button>
+            <button onClick={() => window.__timer_ws?.send(JSON.stringify({ type: 'action', action: 'end' }))} className="rounded-xl bg-red-500/90 hover:bg-red-500 px-4 h-11">End</button>
           </div>
         </header>
 
@@ -157,7 +173,7 @@ export default function ControlPage() {
                   onClick={() => {
                     const ms = m * 60 * 1000;
                     setPresetMs(ms);
-                    (window as any).__timer_ws?.send(JSON.stringify({ type: 'action', action: 'setDuration', payload: { ms } }));
+                    window.__timer_ws?.send(JSON.stringify({ type: 'action', action: 'setDuration', payload: { ms } }));
                   }}
                   className={`h-10 px-3 rounded-lg border ${presetMs === m * 60 * 1000 ? "bg-white text-black border-transparent" : "bg-white/5 border-white/10"}`}
                 >
@@ -177,7 +193,7 @@ export default function ControlPage() {
                   const clampedSeconds = Math.max(0, Math.min(59, secondsVal));
                   const ms = minutesVal * 60 * 1000 + clampedSeconds * 1000;
                   setPresetMs(ms);
-                  (window as any).__timer_ws?.send(JSON.stringify({ type: 'action', action: 'setDuration', payload: { ms } }));
+                  window.__timer_ws?.send(JSON.stringify({ type: 'action', action: 'setDuration', payload: { ms } }));
                 }}
               />
               <span className="text-white/60 mr-3">minutes</span>
@@ -194,7 +210,7 @@ export default function ControlPage() {
                   const minutesVal = Math.floor(presetMs / 60000);
                   const ms = minutesVal * 60 * 1000 + clampedSeconds * 1000;
                   setPresetMs(ms);
-                  (window as any).__timer_ws?.send(JSON.stringify({ type: 'action', action: 'setDuration', payload: { ms } }));
+                  window.__timer_ws?.send(JSON.stringify({ type: 'action', action: 'setDuration', payload: { ms } }));
                 }}
               />
               <span className="text-white/60">seconds</span>
@@ -202,7 +218,7 @@ export default function ControlPage() {
             <div className="mt-4 flex items-center gap-2">
               <input id="overtime" type="checkbox" checked={allowOvertime} onChange={(e) => {
                 setAllowOvertime(e.target.checked);
-                (window as any).__timer_ws?.send(JSON.stringify({ type: 'action', action: 'setOvertime', payload: { value: e.target.checked } }));
+                window.__timer_ws?.send(JSON.stringify({ type: 'action', action: 'setOvertime', payload: { value: e.target.checked } }));
               }} />
               <label htmlFor="overtime" className="text-white/80">Allow overtime</label>
             </div>
@@ -212,17 +228,17 @@ export default function ControlPage() {
             <h2 className="font-medium mb-4">Controls</h2>
             <div className="flex flex-wrap gap-3 mb-4">
               {status !== "running" && (
-                <button onClick={() => (window as any).__timer_ws?.send(JSON.stringify({ type: 'action', action: 'start' }))} className="h-11 px-4 rounded-xl bg-[#3B82F6] hover:bg-[#2563EB]">Start</button>
+                <button onClick={() => window.__timer_ws?.send(JSON.stringify({ type: 'action', action: 'start' }))} className="h-11 px-4 rounded-xl bg-[#3B82F6] hover:bg-[#2563EB]">Start</button>
               )}
               {status === "running" && (
-                <button onClick={() => (window as any).__timer_ws?.send(JSON.stringify({ type: 'action', action: 'pause' }))} className="h-11 px-4 rounded-xl bg-white/10 border border-white/10">Pause</button>
+                <button onClick={() => window.__timer_ws?.send(JSON.stringify({ type: 'action', action: 'pause' }))} className="h-11 px-4 rounded-xl bg-white/10 border border-white/10">Pause</button>
               )}
               {status === "paused" && (
-                <button onClick={() => (window as any).__timer_ws?.send(JSON.stringify({ type: 'action', action: 'resume' }))} className="h-11 px-4 rounded-xl bg-white/10 border border-white/10">Resume</button>
+                <button onClick={() => window.__timer_ws?.send(JSON.stringify({ type: 'action', action: 'resume' }))} className="h-11 px-4 rounded-xl bg-white/10 border border-white/10">Resume</button>
               )}
-              <button onClick={() => (window as any).__timer_ws?.send(JSON.stringify({ type: 'action', action: 'reset', payload: { presetMs } }))} className="h-11 px-4 rounded-xl bg-white/10 border border-white/10">Reset</button>
-              <button onClick={() => (window as any).__timer_ws?.send(JSON.stringify({ type: 'action', action: 'adjust', payload: { deltaMs: 30_000 } }))} className="h-11 px-4 rounded-xl bg-white/10 border border-white/10">+30s</button>
-              <button onClick={() => (window as any).__timer_ws?.send(JSON.stringify({ type: 'action', action: 'adjust', payload: { deltaMs: -30_000 } }))} className="h-11 px-4 rounded-xl bg-white/10 border border-white/10">-30s</button>
+              <button onClick={() => window.__timer_ws?.send(JSON.stringify({ type: 'action', action: 'reset', payload: { presetMs } }))} className="h-11 px-4 rounded-xl bg-white/10 border border-white/10">Reset</button>
+              <button onClick={() => window.__timer_ws?.send(JSON.stringify({ type: 'action', action: 'adjust', payload: { deltaMs: 30_000 } }))} className="h-11 px-4 rounded-xl bg-white/10 border border-white/10">+30s</button>
+              <button onClick={() => window.__timer_ws?.send(JSON.stringify({ type: 'action', action: 'adjust', payload: { deltaMs: -30_000 } }))} className="h-11 px-4 rounded-xl bg-white/10 border border-white/10">-30s</button>
             </div>
           </div>
         </section>

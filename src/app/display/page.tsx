@@ -1,11 +1,11 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { formatDuration } from "@/lib/time";
 import { wsBase, type ServerMessage } from "@/lib/wsClient";
 
-export default function DisplayPage() {
+function DisplayPageContent() {
   const params = useSearchParams();
   const router = useRouter();
   const rawCode = params.get("code");
@@ -44,7 +44,7 @@ export default function DisplayPage() {
       if (msg.type === 'state') {
         const clientNow = Date.now();
         setClockOffsetMs(msg.serverNow - clientNow);
-        setStatus(msg.status as any);
+        setStatus(msg.status);
         setPresetMs(msg.presetDurationMs);
         setStartTime(msg.startTime);
         setPauseAccumulated(msg.pauseAccumulatedMs);
@@ -65,10 +65,9 @@ export default function DisplayPage() {
   useEffect(() => {
     const tick = (t: number) => {
       if (last.current == null) last.current = t;
-      const dt = t - last.current;
       last.current = t;
       if (status === 'running' && startTime != null) {
-        setRemaining((prev) => {
+        setRemaining(() => {
           const nowMs = Date.now() + clockOffsetMs;
           const elapsed = nowMs - startTime - pauseAccumulated;
           const rem = presetMs - elapsed;
@@ -109,5 +108,13 @@ export default function DisplayPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function DisplayPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#0E0F12] text-white flex items-center justify-center p-6">Loading display...</div>}>
+      <DisplayPageContent />
+    </Suspense>
   );
 }

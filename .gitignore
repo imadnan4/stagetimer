@@ -19,7 +19,7 @@
 
 # production
 /build
-
+/agent
 # misc
 .DS_Store
 *.pem
@@ -39,3 +39,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+.agents
+agents
+
+skill-lock.json
+.skills-lock.json
+# Local Netlify folder
+.netlify

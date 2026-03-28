@@ -1,11 +1,13 @@
 export type Role = 'controller' | 'display';
+export type TimerStatus = 'idle' | 'running' | 'paused' | 'completed' | 'overtime';
+
 export type ClientMessage =
   | { type: 'join'; role: Role; code: string; token?: string }
-  | { type: 'action'; action: string; payload?: any };
+  | { type: 'action'; action: string; payload?: unknown };
 
 export type ServerMessage =
   | { type: 'joined'; role: Role; code: string; counts: { controllers: number; displays: number } }
-  | { type: 'state'; code: string; status: string; presetDurationMs: number; startTime: number | null; pauseAccumulatedMs: number; allowOvertime: boolean; serverNow: number }
+  | { type: 'state'; code: string; status: TimerStatus; presetDurationMs: number; startTime: number | null; pauseAccumulatedMs: number; allowOvertime: boolean; serverNow: number }
   | { type: 'presence'; counts: { controllers: number; displays: number } }
   | { type: 'error'; message: string };
 
