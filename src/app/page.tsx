@@ -37,7 +37,7 @@ export default function Home() {
               value={code}
               onChange={(e) => setCode(e.target.value.replace(/\s/g, ""))}
               placeholder="ABC123"
-              className="flex-1 h-12 rounded-xl bg-white/10 border border-white/10 px-4 placeholder-white/40 outline-none focus:border-white/30 tracking-[0.2em] uppercase min-w-0"
+              className="w-full sm:flex-1 h-12 rounded-xl bg-white/10 border border-white/10 px-4 placeholder-white/40 outline-none focus:border-white/30 tracking-[0.2em] uppercase min-w-0"
             />
             <button
               type="submit"
