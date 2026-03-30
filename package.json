@@ -14,9 +14,11 @@
     "dev:all:bun": "concurrently \"bun run server\" \"bun run dev\""
   },
   "dependencies": {
+    "@zxing/browser": "^0.1.5",
     "cors": "^2.8.5",
     "express": "^4.19.2",
     "next": "^15.5.14",
+    "qrcode.react": "^4.2.0",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "ws": "^8.18.0"

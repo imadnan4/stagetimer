@@ -38,9 +38,11 @@ app.post('/api/session', (req, res) => {
   const allowOvertime = !!req.body?.allowOvertime;
   const code = genCode(6);
   const controllerToken = genToken();
+  const displayToken = genToken();
   const session = {
     code,
     controllerToken,
+    displayToken,
     activeControllerToken: null,
     status: 'idle',
     presetDurationMs: presetMs,
@@ -53,7 +55,13 @@ app.post('/api/session', (req, res) => {
     expiresAt: now() + SESSION_TTL_MINUTES * 60 * 1000,
   };
   sessions.set(code, session);
-  res.json({ code, controllerToken, controlUrl: `/control?code=${code}&token=${controllerToken}`, displayUrl: `/display?code=${code}` });
+  res.json({
+    code,
+    controllerToken,
+    displayToken,
+    controlUrl: `/control?code=${code}&token=${controllerToken}`,
+    displayUrl: `/display?code=${code}&join=${displayToken}`,
+  });
 });
 
 const server = http.createServer(app);
@@ -112,6 +120,11 @@ wss.on('connection', (ws) => {
         }
         s.clients.controllers.add(socketId);
       } else {
+        // If a join token is provided (QR flow), it must match this specific session.
+        // This prevents stale QR links from attaching if a code is ever reused later.
+        if (typeof token === 'string' && token.length > 0 && token !== s.displayToken) {
+          return send(ws, { type: 'error', message: 'Invalid or expired QR link' });
+        }
         s.clients.displays.add(socketId);
       }
       joined = { code: s.code, role };

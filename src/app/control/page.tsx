@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatDuration } from "@/lib/time";
 import { apiBase, wsBase, type ServerMessage, type TimerStatus } from "@/lib/wsClient";
+import { QRCodeSVG } from "qrcode.react";
+import { buildDisplayJoinUrl } from "@/lib/sessionLinks";
 
 declare global {
   interface Window {
@@ -24,6 +26,9 @@ export default function ControlPage() {
   const [remaining, setRemaining] = useState<number | null>(null);
   const [clockOffsetMs, setClockOffsetMs] = useState(0); // serverNow - clientNow
   const [sessionEnded, setSessionEnded] = useState(false);
+  const [qrOpen, setQrOpen] = useState(false);
+  const [displayJoinUrl, setDisplayJoinUrl] = useState("");
+  const [displayJoinToken, setDisplayJoinToken] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
   // Create session on first render
@@ -40,6 +45,7 @@ export default function ControlPage() {
         const json = await res.json();
         if (cancelled) return;
         setCode(json.code);
+        setDisplayJoinToken(typeof json.displayToken === 'string' ? json.displayToken : null);
         // open WS and join as controller
         const ws = new WebSocket(wsBase());
         ws.onopen = () => {
@@ -54,6 +60,10 @@ export default function ControlPage() {
             setStartTime(null);
             setPauseAccumulated(0);
             setRemaining(presetMs);
+            setCode(null);
+            setQrOpen(false);
+            setDisplayJoinUrl("");
+            setDisplayJoinToken(null);
             try { ws.close(); } catch {}
             return;
           }
@@ -117,6 +127,15 @@ export default function ControlPage() {
     return () => { if (raf.current) cancelAnimationFrame(raf.current); };
   }, [status, startTime, pauseAccumulated, presetMs, clockOffsetMs]);
 
+  useEffect(() => {
+    if (!code) {
+      setDisplayJoinUrl("");
+      return;
+    }
+    const origin = typeof window !== "undefined" ? window.location.origin : undefined;
+    setDisplayJoinUrl(buildDisplayJoinUrl(code, origin, displayJoinToken ?? undefined));
+  }, [code, displayJoinToken]);
+
   const safeRemaining = Math.max(0, remaining ?? presetMs);
   const minutes = Math.floor(safeRemaining / 60000);
   const seconds = Math.floor((safeRemaining % 60000) / 1000);
@@ -131,9 +150,15 @@ export default function ControlPage() {
             <h1 className="text-2xl font-semibold">Controller</h1>
             <p className="text-white/60">Session code: <span className="font-mono tracking-[0.2em]">{code}</span></p>
           </div>
-          <div className="flex gap-3">
-            <button className="rounded-xl bg-white/10 border border-white/10 px-4 h-11">Show QR</button>
-            <button onClick={() => window.__timer_ws?.send(JSON.stringify({ type: 'action', action: 'end' }))} className="rounded-xl bg-red-500/90 hover:bg-red-500 px-4 h-11">End</button>
+          <div className="flex gap-3 w-full md:w-auto">
+            <button
+              onClick={() => setQrOpen(true)}
+              disabled={!code || sessionEnded}
+              className="rounded-xl bg-white/10 border border-white/10 px-4 h-11 w-full sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Show QR
+            </button>
+            <button onClick={() => window.__timer_ws?.send(JSON.stringify({ type: 'action', action: 'end' }))} className="rounded-xl bg-red-500/90 hover:bg-red-500 px-4 h-11 w-full sm:w-auto">End</button>
           </div>
         </header>
 
@@ -253,6 +278,41 @@ export default function ControlPage() {
             <button onClick={() => { router.replace('/control'); }} className="h-10 px-4 rounded-xl bg-white text-black">Start new session</button>
             <button onClick={() => { router.push('/'); }} className="h-10 px-4 rounded-xl bg-white/10 border border-white/10">Home</button>
           </div>
+        </div>
+      </div>
+    )}
+    {qrOpen && (
+      <div className="fixed inset-0 z-40 flex items-end sm:items-center justify-center p-4">
+        <div className="absolute inset-0 bg-black/60" onClick={() => setQrOpen(false)} />
+        <div className="relative w-full max-w-sm rounded-2xl border border-white/10 bg-[#15171C] p-5 shadow-2xl">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-lg font-semibold">Join Display</h2>
+            <button onClick={() => setQrOpen(false)} className="h-9 px-3 rounded-lg bg-white/10 border border-white/10">Close</button>
+          </div>
+          <p className="text-white/70 text-sm mb-4">Scan this QR from the display device to join the session instantly.</p>
+          <div className="rounded-xl bg-white p-4 flex items-center justify-center mb-4">
+            {displayJoinUrl ? (
+              <QRCodeSVG
+                value={displayJoinUrl}
+                size={512}
+                level="M"
+                marginSize={4}
+                title="Session join QR code"
+                style={{ width: "100%", height: "auto", maxWidth: 260 }}
+              />
+            ) : (
+              <div className="text-black/70 text-sm">Preparing QR...</div>
+            )}
+          </div>
+          <div className="text-xs text-white/60 mb-2">Link</div>
+          <a
+            href={displayJoinUrl || "#"}
+            target="_blank"
+            rel="noreferrer"
+            className="block text-sm text-blue-300 break-all underline-offset-2 hover:underline"
+          >
+            {displayJoinUrl || "Preparing link..."}
+          </a>
         </div>
       </div>
     )}

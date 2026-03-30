@@ -9,6 +9,7 @@ function DisplayPageContent() {
   const params = useSearchParams();
   const router = useRouter();
   const rawCode = params.get("code");
+  const joinToken = params.get("join");
   const code = rawCode ? rawCode.toUpperCase() : null;
 
   const [status, setStatus] = useState<"idle" | "running" | "paused" | "completed" | "overtime" | "disconnected">("disconnected");
@@ -32,7 +33,7 @@ function DisplayPageContent() {
     if (!code) return;
     const ws = new WebSocket(wsBase());
     ws.onopen = () => {
-      ws.send(JSON.stringify({ type: 'join', role: 'display', code }));
+      ws.send(JSON.stringify({ type: 'join', role: 'display', code, ...(joinToken ? { token: joinToken } : {}) }));
     };
     ws.onmessage = (ev) => {
       const msg: ServerMessage = JSON.parse(ev.data);
@@ -59,7 +60,7 @@ function DisplayPageContent() {
     };
     ws.onclose = () => setStatus('disconnected');
     return () => ws.close();
-  }, [code]);
+  }, [code, joinToken]);
 
   // Animate only when running
   useEffect(() => {
