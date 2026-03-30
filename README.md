@@ -7,7 +7,7 @@ Stagetimer is a browser-based presentation timer with one controller and many di
 - Frontend: Next.js app (routes: /, /control, /display)
 - Backend: Express + WebSocket server in server/server.js
 - Deployment model:
-	- Frontend on Netlify
+	- Frontend on Netlify (static export)
 	- Backend on Railway
 
 This split is required because the app needs a persistent WebSocket backend.
@@ -94,12 +94,14 @@ Expected response:
 1. Create a Netlify site from this GitHub repository.
 2. Build settings:
 	 - Build command: pnpm run build
-	 - Publish directory: .next
+	 - Publish directory: out
 	 - Node version: 20
-3. Add frontend environment variables in Netlify Production context:
+3. Add Netlify environment variable:
+	 - NETLIFY_NEXT_PLUGIN_SKIP=true
+4. Add frontend environment variables in Netlify Production context:
 	 - NEXT_PUBLIC_API_URL=https://your-backend.railway.app
 	 - NEXT_PUBLIC_WS_URL=wss://your-backend.railway.app/ws
-4. Trigger a production deploy.
+5. Trigger a production deploy.
 
 ### Step 3: Final CORS alignment
 
@@ -124,9 +126,11 @@ Netlify:
 ```bash
 pnpm --package=netlify-cli dlx netlify login
 pnpm --package=netlify-cli dlx netlify init
+pnpm --package=netlify-cli dlx netlify env:set NETLIFY_NEXT_PLUGIN_SKIP true --context production
 pnpm --package=netlify-cli dlx netlify env:set NEXT_PUBLIC_API_URL https://your-backend.railway.app --context production
 pnpm --package=netlify-cli dlx netlify env:set NEXT_PUBLIC_WS_URL wss://your-backend.railway.app/ws --context production
-pnpm --package=netlify-cli dlx netlify deploy --trigger --prod
+NEXT_PUBLIC_API_URL=https://your-backend.railway.app NEXT_PUBLIC_WS_URL=wss://your-backend.railway.app/ws pnpm run build
+pnpm --package=netlify-cli dlx netlify deploy --prod --no-build --dir out
 ```
 
 Railway:
@@ -149,6 +153,10 @@ pnpm --package=@railway/cli dlx railway domain
 - Frontend cannot connect to backend
 	- Confirm NEXT_PUBLIC_API_URL and NEXT_PUBLIC_WS_URL on Netlify.
 	- Confirm PUBLIC_ORIGIN on Railway matches Netlify production URL.
+
+- Site returns "Internal Server Error" on Netlify
+	- If the site was deployed as SSR/runtime and crashes in `___netlify-server-handler`, switch to static export deployment (`out`) and deploy that output.
+	- Ensure `NETLIFY_NEXT_PLUGIN_SKIP=true` in production environment.
 
 ## Notes
 
