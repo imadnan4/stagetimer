@@ -70,13 +70,14 @@ Backend variables (Railway service variables):
 
 ### Step 1: Deploy backend to Railway
 
-1. Create a new Railway project.
-2. Add a service connected to this GitHub repository.
-3. In service settings, set:
-	 - Build Command: echo "skip frontend build for backend service"
-	 - Start Command: pnpm run server
-4. Add backend environment variables listed above.
-5. Generate a public Railway domain for the service.
+1. Login and create/link a Railway project from this repo.
+2. Create and link a backend service (required before setting variables):
+	 - `pnpm --package=@railway/cli dlx railway add --service stagetimer-backend-api`
+	 - Choose `Empty Service` when prompted.
+3. Set backend environment variables listed above.
+4. Deploy only the backend folder:
+	 - `pnpm --package=@railway/cli dlx railway up server --path-as-root -d`
+5. Generate a public Railway domain for the linked service.
 6. Verify health endpoint:
 
 ```bash
@@ -88,6 +89,12 @@ Expected response:
 ```json
 {"ok":true}
 ```
+
+Notes:
+
+- If you use Railway CLI through `pnpm dlx`, continue using `pnpm --package=@railway/cli dlx railway ...` for all commands. Running plain `railway ...` will fail unless Railway is globally installed.
+- `railway variable set` requires a linked service. If you see `No service linked`, run `railway add --service ...` (or `railway service link ...`) first.
+- Deploying with `railway up server --path-as-root` avoids building the frontend in Railway.
 
 ### Step 2: Deploy frontend to Netlify
 
@@ -138,8 +145,23 @@ Railway:
 ```bash
 pnpm --package=@railway/cli dlx railway login
 pnpm --package=@railway/cli dlx railway init -n stagetimer-backend
+pnpm --package=@railway/cli dlx railway add --service stagetimer-backend-api
+pnpm --package=@railway/cli dlx railway service link stagetimer-backend-api
 pnpm --package=@railway/cli dlx railway variable set NODE_ENV=production PUBLIC_ORIGIN=https://your-site.netlify.app CORS_ALLOW_ALL=0 SESSION_TTL_MINUTES=120 SESSION_CODE_ALPHABET=23456789ABCDEFGHJKMNPQRSTUVWXYZ
+pnpm --package=@railway/cli dlx railway up server --path-as-root -d
+pnpm --package=@railway/cli dlx railway service status
 pnpm --package=@railway/cli dlx railway domain
+curl https://your-backend.railway.app/api/health
+```
+
+If `railway up server --path-as-root` fails with a Dockerfile parse error from a Windows-mounted path (`/mnt/c/...`), deploy from a Linux temp directory:
+
+```bash
+TMP_DIR=/tmp/stagetimer-backend-deploy
+rm -rf "$TMP_DIR" && mkdir -p "$TMP_DIR"
+cp /mnt/c/Users/<you>/path/to/repo/server/Dockerfile /mnt/c/Users/<you>/path/to/repo/server/package.json /mnt/c/Users/<you>/path/to/repo/server/server.js "$TMP_DIR"/
+cd "$TMP_DIR"
+pnpm --package=@railway/cli dlx railway up . --path-as-root -d -p <PROJECT_ID> -e production -s stagetimer-backend-api
 ```
 
 ## Troubleshooting
@@ -153,6 +175,16 @@ pnpm --package=@railway/cli dlx railway domain
 - Frontend cannot connect to backend
 	- Confirm NEXT_PUBLIC_API_URL and NEXT_PUBLIC_WS_URL on Netlify.
 	- Confirm PUBLIC_ORIGIN on Railway matches Netlify production URL.
+
+- Railway error: `No service linked`
+	- Create/link a service first: `pnpm --package=@railway/cli dlx railway add --service stagetimer-backend-api`.
+	- Then rerun `pnpm --package=@railway/cli dlx railway variable set ...`.
+
+- Shell error: `zsh: command not found: railway`
+	- Use `pnpm --package=@railway/cli dlx railway ...` unless Railway CLI is installed globally.
+
+- Railway build error: `Dockerfile parse error on line 1: unknown instruction`
+	- If deploying from `/mnt/c/...`, retry from a Linux temp directory using the fallback commands above.
 
 - Site returns "Internal Server Error" on Netlify
 	- If the site was deployed as SSR/runtime and crashes in `___netlify-server-handler`, switch to static export deployment (`out`) and deploy that output.
