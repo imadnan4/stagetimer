@@ -77,7 +77,8 @@ Backend variables (Railway service variables):
 3. Set backend environment variables listed above.
 4. Deploy only the backend folder:
 	 - `pnpm --package=@railway/cli dlx railway up server --path-as-root -d`
-5. Generate a public Railway domain for the linked service.
+5. Generate a public Railway domain for the linked service:
+	 - `pnpm --package=@railway/cli dlx railway domain`
 6. Verify health endpoint:
 
 ```bash
@@ -93,6 +94,7 @@ Expected response:
 Notes:
 
 - If you use Railway CLI through `pnpm dlx`, continue using `pnpm --package=@railway/cli dlx railway ...` for all commands. Running plain `railway ...` will fail unless Railway is globally installed.
+- New Railway users (or accounts with no projects yet) should run `pnpm --package=@railway/cli dlx railway init -n stagetimer-backend` to create a project before linking services.
 - `railway variable set` requires a linked service. If you see `No service linked`, run `railway add --service ...` (or `railway service link ...`) first.
 - Deploying with `railway up server --path-as-root` avoids building the frontend in Railway.
 

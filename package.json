@@ -14,6 +14,7 @@
     "dev:all:bun": "concurrently \"bun run server\" \"bun run dev\""
   },
   "dependencies": {
+    "@railway/cli": "^4.61.1",
     "@zxing/browser": "^0.1.5",
     "cors": "^2.8.5",
     "express": "^4.19.2",
