@@ -23,26 +23,26 @@ This split is required because the app needs a persistent WebSocket backend.
 - TypeScript
 - Tailwind CSS v4
 - Express + ws
-- pnpm
+- npm (single package manager — only `package-lock.json` is tracked)
 
 ## Local Development
 
 Prerequisites:
 
 - Node.js 20+
-- pnpm
+- npm
 - Free ports: 3000 (frontend) and 8787 (backend)
 
 Install dependencies:
 
 ```bash
-pnpm install
+npm install
 ```
 
 Run frontend and backend together:
 
 ```bash
-pnpm run dev:all
+npm run dev:all
 ```
 
 Open:
@@ -110,7 +110,7 @@ Notes:
 
 1. Create a Netlify site from this GitHub repository.
 2. Build settings:
-	 - Build command: pnpm run build
+	 - Build command: npm run build
 	 - Publish directory: out
 	 - Node version: 20
 3. Add Netlify environment variable:
@@ -118,7 +118,7 @@ Notes:
 4. Add frontend environment variables in Netlify Production context:
 	 - NEXT_PUBLIC_API_URL=https://your-backend-<hash>.herokuapp.com
 	 - NEXT_PUBLIC_WS_URL=wss://your-backend-<hash>.herokuapp.com/ws
-- NEXT_PUBLIC_LEMON_SQUEEZY_CHECKOUT_URL=https://your-store.lemonsqueezy.com/checkout/buy/VARIANT_ID?embed=1
+	 - NEXT_PUBLIC_LEMON_SQUEEZY_CHECKOUT_URL=https://your-store.lemonsqueezy.com/checkout/buy/VARIANT_ID?embed=1
 5. Trigger a production deploy.
 
 ### Step 3: Final CORS alignment
@@ -141,14 +141,14 @@ Notes:
 Netlify:
 
 ```bash
-pnpm --package=netlify-cli dlx netlify login
-pnpm --package=netlify-cli dlx netlify init
-pnpm --package=netlify-cli dlx netlify env:set NETLIFY_NEXT_PLUGIN_SKIP true --context production
-pnpm --package=netlify-cli dlx netlify env:set NEXT_PUBLIC_API_URL https://your-backend-<hash>.herokuapp.com --context production
-pnpm --package=netlify-cli dlx netlify env:set NEXT_PUBLIC_WS_URL wss://your-backend-<hash>.herokuapp.com/ws --context production
-pnpm --package=netlify-cli dlx netlify env:set NEXT_PUBLIC_LEMON_SQUEEZY_CHECKOUT_URL https://your-store.lemonsqueezy.com/checkout/buy/<id>?embed=1 --context production
-NEXT_PUBLIC_API_URL=... NEXT_PUBLIC_WS_URL=... NEXT_PUBLIC_LEMON_SQUEEZY_CHECKOUT_URL=... pnpm run build
-pnpm --package=netlify-cli dlx netlify deploy --prod --no-build --dir out
+npx netlify login
+npx netlify init
+npx netlify env:set NETLIFY_NEXT_PLUGIN_SKIP true --context production
+npx netlify env:set NEXT_PUBLIC_API_URL https://your-backend-<hash>.herokuapp.com --context production
+npx netlify env:set NEXT_PUBLIC_WS_URL wss://your-backend-<hash>.herokuapp.com/ws --context production
+npx netlify env:set NEXT_PUBLIC_LEMON_SQUEEZY_CHECKOUT_URL https://your-store.lemonsqueezy.com/checkout/buy/<id>?embed=1 --context production
+NEXT_PUBLIC_API_URL=... NEXT_PUBLIC_WS_URL=... NEXT_PUBLIC_LEMON_SQUEEZY_CHECKOUT_URL=... npm run build
+npx netlify deploy --prod --no-build --dir out
 ```
 
 Heroku:
