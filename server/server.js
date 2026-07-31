@@ -1,7 +1,8 @@
-// Simple no-DB server: REST (+/api/session) and WebSocket (/ws)
+// Simple no-DB server: REST (+/api/session, /api/lemon/webhook) and WebSocket (/ws)
 const express = require('express');
 const http = require('http');
 const cors = require('cors');
+const crypto = require('crypto');
 const { WebSocketServer } = require('ws');
 
 const PORT = process.env.PORT || 8787;
@@ -9,6 +10,14 @@ const PUBLIC_ORIGIN = process.env.PUBLIC_ORIGIN || 'http://localhost:3000';
 const CORS_ALLOW_ALL = process.env.CORS_ALLOW_ALL === '1' || process.env.NODE_ENV !== 'production';
 const SESSION_TTL_MINUTES = Number(process.env.SESSION_TTL_MINUTES || 120);
 const ALPHABET = (process.env.SESSION_CODE_ALPHABET || '23456789ABCDEFGHJKMNPQRSTUVWXYZ').split('');
+const LEMON_SQUEEZY_WEBHOOK_SECRET = process.env.LEMON_SQUEEZY_WEBHOOK_SECRET || '';
+const WS_HEARTBEAT_MS = 30_000;
+
+/** In-memory donation tally (cleared on restart). */
+const donations = { count: 0, totalCents: 0 };
+
+/** Deduplicates webhook deliveries that Lemon Squeezy retries. */
+const processedWebhookIds = new Set(); // `${event}:${data.id}`
 
 /** @typedef {Object} Session */
 const sessions = new Map(); // code -> session
@@ -29,9 +38,53 @@ function now() { return Date.now(); }
 const app = express();
 app.use(cors({ origin: CORS_ALLOW_ALL ? true : PUBLIC_ORIGIN, credentials: false }));
 app.options('*', cors({ origin: CORS_ALLOW_ALL ? true : PUBLIC_ORIGIN, credentials: false }));
-app.use(express.json());
+app.use(express.json({
+  verify: (req, _res, buf) => { req.rawBody = buf; },
+}));
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
+
+app.get('/api/donations', (_req, res) => res.json({ count: donations.count, totalCents: donations.totalCents }));
+
+app.post('/api/lemon/webhook', (req, res) => {
+  if (!LEMON_SQUEEZY_WEBHOOK_SECRET) return res.status(503).json({ ok: false, error: 'Webhook secret not configured' });
+  if (!req.rawBody) return res.status(400).json({ ok: false, error: 'Raw body required' });
+  const raw = req.rawBody.toString('utf8');
+  const signature = req.get('X-Signature') || '';
+  const expected = crypto.createHmac('sha256', LEMON_SQUEEZY_WEBHOOK_SECRET).update(raw, 'utf8').digest('hex');
+  const supplied = Buffer.from(signature, 'utf8');
+  const computed = Buffer.from(expected, 'utf8');
+  if (supplied.length !== computed.length || !crypto.timingSafeEqual(supplied, computed)) {
+    return res.status(401).json({ ok: false, error: 'Invalid signature' });
+  }
+  const event = req.body?.meta?.event_name || req.body?.event_name || 'unknown';
+  const orderId = req.body?.data?.id;
+  const dedupKey = `${event}:${orderId}`;
+  if (orderId) {
+    if (processedWebhookIds.has(dedupKey)) return res.json({ ok: true, duplicate: true });
+    processedWebhookIds.add(dedupKey);
+  }
+  const attributes = req.body?.data?.attributes || {};
+  const toCents = (v) => {
+    const n = Number(v ?? 0);
+    return Number.isFinite(n) ? n : null;
+  };
+  if (event === 'order_created') {
+    // Count donations only once the order has actually been paid
+    if (attributes.status !== 'paid') return res.json({ ok: true });
+    const cents = toCents(attributes.total);
+    if (cents === null) return res.status(400).json({ ok: false, error: 'Invalid total' });
+    donations.count += 1;
+    donations.totalCents += cents;
+  }
+  if (event === 'order_refunded') {
+    const cents = toCents(attributes.total);
+    if (cents === null) return res.status(400).json({ ok: false, error: 'Invalid total' });
+    donations.totalCents = Math.max(0, donations.totalCents - cents);
+  }
+  console.log(`[lemon-squeezy] ${event} (total donations: ${donations.count}, total cents: ${donations.totalCents})`);
+  res.json({ ok: true });
+});
 
 app.post('/api/session', (req, res) => {
   const presetMs = typeof req.body?.presetMs === 'number' ? req.body.presetMs : 5 * 60 * 1000;
@@ -96,10 +149,49 @@ function computeState(s) {
   };
 }
 
+function terminateSession(s) {
+  broadcast({ clients: s.clients }, { type: 'error', message: 'Session ended' });
+  for (const id of [...s.clients.controllers, ...s.clients.displays]) {
+    const ws = clients.get(id);
+    if (ws) {
+      try { ws.terminate(); } catch {}
+    }
+  }
+}
+
+// Sweep expired sessions so they don't accumulate in memory forever
+const ttlSweep = setInterval(() => {
+  const cutoff = now();
+  for (const [code, s] of sessions) {
+    if (s.expiresAt < cutoff) {
+      sessions.delete(code);
+      terminateSession(s);
+    }
+  }
+}, 60 * 1000);
+ttlSweep.unref();
+
+// Clean up intervals on shutdown
+server.on('close', () => clearInterval(ttlSweep));
+
 wss.on('connection', (ws) => {
   const socketId = String(nextId++);
   clients.set(socketId, ws);
   let joined = null; // { code, role }
+
+  ws.isAlive = true;
+  // Keep the connection alive through proxies (Heroku router drops idle sockets)
+  const heartbeat = setInterval(() => {
+    if (ws.isAlive === false) {
+      ws.terminate();
+      return;
+    }
+    ws.isAlive = false;
+    if (ws.readyState === ws.OPEN) ws.ping();
+  }, WS_HEARTBEAT_MS);
+
+  ws.on('pong', () => { ws.isAlive = true; });
+  ws.on('error', () => {});
 
   ws.on('message', (data) => {
     let msg;
@@ -182,7 +274,8 @@ wss.on('connection', (ws) => {
           break;
         case 'end':
           sessions.delete(s.code);
-          break;
+          terminateSession(s);
+          return;
         default:
           return;
       }
@@ -196,6 +289,7 @@ wss.on('connection', (ws) => {
   });
 
   ws.on('close', () => {
+    clearInterval(heartbeat);
     clients.delete(socketId);
     if (joined) {
       const s = sessions.get(joined.code);
@@ -211,6 +305,26 @@ wss.on('connection', (ws) => {
   });
 });
 
-server.listen(PORT, () => {
-  console.log(`WS/REST server listening on http://localhost:${PORT}`);
-});
+if (require.main === module) {
+  server.listen(PORT, () => {
+    console.log(`WS/REST server listening on http://localhost:${PORT}`);
+  });
+}
+
+module.exports = { app, server, start };
+
+function start(port = PORT) {
+  return new Promise((resolve, reject) => {
+    const onError = (err) => {
+      server.off('listening', onListening);
+      reject(err);
+    };
+    const onListening = () => {
+      server.off('error', onError);
+      resolve(server);
+    };
+    server.once('error', onError);
+    server.once('listening', onListening);
+    server.listen(port);
+  });
+}
