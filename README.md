@@ -60,7 +60,7 @@ Frontend variables (Netlify, Production context):
 
 - NEXT_PUBLIC_API_URL=https://your-backend.herokuapp.com
 - NEXT_PUBLIC_WS_URL=wss://your-backend.herokuapp.com/ws
-- NEXT_PUBLIC_LEMON_SQUEEZY_CHECKOUT_URL=https://your-store.lemonsqueezy.com/checkout/buy/VARIANT_ID
+	 - NEXT_PUBLIC_LEMON_SQUEEZY_CHECKOUT_URL=https://your-store.lemonsqueezy.com/checkout/buy/VARIANT_ID?embed=1
 
 Backend variables (Heroku):
 
@@ -118,7 +118,7 @@ Notes:
 4. Add frontend environment variables in Netlify Production context:
 	 - NEXT_PUBLIC_API_URL=https://your-backend-<hash>.herokuapp.com
 	 - NEXT_PUBLIC_WS_URL=wss://your-backend-<hash>.herokuapp.com/ws
-	 - NEXT_PUBLIC_LEMON_SQUEEZY_CHECKOUT_URL=https://your-store.lemonsqueezy.com/checkout/buy/VARIANT_ID
+- NEXT_PUBLIC_LEMON_SQUEEZY_CHECKOUT_URL=https://your-store.lemonsqueezy.com/checkout/buy/VARIANT_ID?embed=1
 5. Trigger a production deploy.
 
 ### Step 3: Final CORS alignment
@@ -224,6 +224,9 @@ overlay lifecycle.
 
 - Lemon Squeezy webhooks not firing
 	- Test-mode webhooks only fire for test-mode orders; recreate/update the webhook after disabling test mode.
+
+- Checkout link 404s ("product not found")
+	- New Lemon Squeezy stores/products are reviewed before going live. While pending, only the dashboard preview checkout URL works; the `checkout/buy/<numeric-variant-id>` URL starts working once the store review passes and you activate the store. Keep `?embed=1` so the checkout opens as the overlay instead of a new tab.
 	- `next/font` fails to fetch Google Fonts in some environments: the fonts are self-hosted in src/app/fonts/, so remove that workaround only if you have network access during builds.
 
 ## Notes
