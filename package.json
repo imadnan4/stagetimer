@@ -7,8 +7,12 @@
     "build": "node scripts/build.js",
     "build:next": "next build",
     "start": "node scripts/start.js",
-    "start:next": "next start",
+    "start:next": "node scripts/serve-static.js",
     "lint": "next lint",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:server": "vitest run --project server",
+    "test:frontend": "vitest run --project frontend",
     "server": "node server/server.js",
     "dev:all": "concurrently \"npm run server\" \"next dev --turbopack\"",
     "dev:all:bun": "concurrently \"bun run server\" \"bun run dev\""
@@ -27,13 +31,20 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
+    "@testing-library/jest-dom": "^7.0.0",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^6.0.5",
     "concurrently": "^9.1.0",
     "eslint": "^9",
     "eslint-config-next": "^15.5.14",
+    "jsdom": "^30.0.1",
+    "supertest": "^7.2.2",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.10"
   }
 }
