@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { BrowserQRCodeReader, type IScannerControls } from "@zxing/browser";
 import { buildDisplayJoinPathWithToken, parseScannedSession } from "@/lib/sessionLinks";
+import SupportButton from "@/components/SupportButton";
 
 export default function Home() {
   const router = useRouter();
@@ -96,10 +97,17 @@ export default function Home() {
   }, [scannerOpen, router]);
 
   return (
-    <div className="min-h-screen bg-[#0E0F12] text-white flex items-center justify-center p-4 sm:p-6">
+    <div className="min-h-screen bg-[#0E0F12] text-white flex flex-col items-center justify-center p-4 sm:p-6">
       <main className="w-full max-w-5xl grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
         <div className="rounded-2xl p-5 sm:p-8 bg-white/5 backdrop-blur border border-white/10 shadow-lg hover:shadow-xl transition-shadow">
-          <h1 className="text-xl sm:text-2xl font-semibold mb-2">Create Control</h1>
+          <div className="flex items-center gap-3 mb-2">
+            <img
+              src="/icon.svg"
+              alt="Stage Timer logo"
+              className="size-8 shrink-0"
+            />
+            <h1 className="text-xl sm:text-2xl font-semibold">Create Control</h1>
+          </div>
           <p className="text-white/70 text-sm sm:text-base mb-5 sm:mb-6">Start a new session to control the presentation timer remotely.</p>
           <button
             onClick={() => router.push("/control")}
@@ -161,6 +169,10 @@ export default function Home() {
           </div>
         </div>
       )}
+
+      <footer className="w-full flex items-center justify-center pt-6 pb-2">
+        <SupportButton />
+      </footer>
     </div>
   );
 }

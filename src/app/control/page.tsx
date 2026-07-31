@@ -30,8 +30,9 @@ export default function ControlPage() {
   const [displayJoinUrl, setDisplayJoinUrl] = useState("");
   const [displayJoinToken, setDisplayJoinToken] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const [sessionKey, setSessionKey] = useState(0);
 
-  // Create session on first render
+  // Create session on first render (or when sessionKey is bumped for a new one)
   useEffect(() => {
     let cancelled = false;
 
@@ -105,7 +106,7 @@ export default function ControlPage() {
       delete window.__timer_ws;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [sessionKey]);
 
   // Animate remaining time like the display view
   const raf = useRef<number | null>(null);
@@ -275,7 +276,7 @@ export default function ControlPage() {
           <div className="text-lg font-semibold mb-1">Session ended</div>
           <div className="text-white/70 mb-4">Would you like to start a new session or go back to home?</div>
           <div className="flex flex-col sm:flex-row gap-2">
-            <button onClick={() => { router.replace('/control'); }} className="h-10 px-4 rounded-xl bg-white text-black">Start new session</button>
+            <button onClick={() => { setError(null); setSessionEnded(false); setSessionKey((k) => k + 1); }} className="h-10 px-4 rounded-xl bg-white text-black">Start new session</button>
             <button onClick={() => { router.push('/'); }} className="h-10 px-4 rounded-xl bg-white/10 border border-white/10">Home</button>
           </div>
         </div>
