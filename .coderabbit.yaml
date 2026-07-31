@@ -15,8 +15,9 @@ reviews:
     base_branches:
       - main
       - develop
-    ignore_title_patterns:
-      - "^chore: (bump|release|lock)"
+    ignore_title_keywords:
+      - "chore: release"
+      - "chore: bump"
   path_instructions:
     - path: "server/**"
       instructions: |
@@ -28,17 +29,13 @@ reviews:
         Ensure tests assert behavior, not implementation, and follow the
         existing Vitest patterns (supertest for REST, real WebSocket clients
         on ephemeral ports, Testing Library for components).
+  tools:
+    shellcheck:
+      enabled: true
+    eslint:
+      enabled: true
+    markdownlint:
+      enabled: true
 
 chat:
   auto_reply: true
-  enable: true
-
-tools:
-  shellcheck:
-    enabled: true
-  eslint:
-    enabled: true
-  markdownlint:
-    enabled: true
-  secret-leak:
-    enabled: true
