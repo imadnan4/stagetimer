@@ -1,5 +1,0 @@
-[phases.build]
-cmds = ["echo 'No frontend build on Railway backend service'", "npm install --prefix server --omit=dev"]
-
-[start]
-cmd = "npm run server"
