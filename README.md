@@ -8,9 +8,13 @@ Stagetimer is a browser-based presentation timer with one controller and many di
 - Backend: Express + WebSocket server in server/server.js
 - Deployment model:
 	- Frontend on Netlify (static export)
-	- Backend on Railway
+	- Backend on Heroku (Docker container)
 
 This split is required because the app needs a persistent WebSocket backend.
+
+## Donations
+
+"Support the Creator" button (home page) uses a Lemon Squeezy checkout overlay (lemon.js). Backend exposes `POST /api/lemon/webhook` which verifies the `X-Signature` HMAC-SHA256 header against `LEMON_SQUEEZY_WEBHOOK_SECRET` and tallies `order_created`/`order_refunded` events in memory (`GET /api/donations`).
 
 ## Tech Stack
 
@@ -47,42 +51,46 @@ Open:
 
 ## Environment Variables
 
-Do not upload .env files to Netlify or Railway.
+Do not upload .env files to Netlify or Heroku.
 Set variables in each platform dashboard (or via CLI).
 
 Use .env.example as reference values.
 
 Frontend variables (Netlify, Production context):
 
-- NEXT_PUBLIC_API_URL=https://your-backend.railway.app
-- NEXT_PUBLIC_WS_URL=wss://your-backend.railway.app/ws
+- NEXT_PUBLIC_API_URL=https://your-backend.herokuapp.com
+- NEXT_PUBLIC_WS_URL=wss://your-backend.herokuapp.com/ws
+- NEXT_PUBLIC_LEMON_SQUEEZY_CHECKOUT_URL=https://your-store.lemonsqueezy.com/checkout/buy/VARIANT_ID
 
-Backend variables (Railway service variables):
+Backend variables (Heroku):
 
 - NODE_ENV=production
 - PUBLIC_ORIGIN=https://your-site.netlify.app
 - CORS_ALLOW_ALL=0
 - SESSION_TTL_MINUTES=120
 - SESSION_CODE_ALPHABET=23456789ABCDEFGHJKMNPQRSTUVWXYZ
-- PORT=8787 (local fallback; Railway may inject PORT automatically)
+- LEMON_SQUEEZY_WEBHOOK_SECRET=<signing secret from the Lemon Squeezy dashboard>
+- PORT is injected automatically by Heroku
 
-## Easy Deployment Guide (Open Source Friendly)
+## Easy Deployment Guide
 
-### Step 1: Deploy backend to Railway
+### Step 1: Deploy backend to Heroku
 
-1. Login and create/link a Railway project from this repo.
-2. Create and link a backend service (required before setting variables):
-	 - `pnpm --package=@railway/cli dlx railway add --service stagetimer-backend-api`
-	 - Choose `Empty Service` when prompted.
-3. Set backend environment variables listed above.
-4. Deploy only the backend folder:
-	 - `pnpm --package=@railway/cli dlx railway up server --path-as-root -d`
-5. Generate a public Railway domain for the linked service:
-	 - `pnpm --package=@railway/cli dlx railway domain`
+Prerequisites: Heroku CLI logged in (`heroku login`), Docker available.
+
+1. Create the app (new apps get a hashed `https://<name>-<hash>.herokuapp.com` URL — use that URL everywhere):
+   - `heroku create stage-timer-backend --region us`
+2. Switch to the container stack:
+   - `heroku stack:set container --app stage-timer-backend`
+3. Set backend environment variables (from the list above).
+4. Build and push the Docker image from server/:
+   - `cd server && heroku container:push web --app stage-timer-backend`
+5. Release:
+   - `heroku container:release web --app stage-timer-backend`
 6. Verify health endpoint:
 
 ```bash
-curl https://your-backend.railway.app/api/health
+curl https://your-app-<hash>.herokuapp.com/api/health
 ```
 
 Expected response:
@@ -93,10 +101,10 @@ Expected response:
 
 Notes:
 
-- If you use Railway CLI through `pnpm dlx`, continue using `pnpm --package=@railway/cli dlx railway ...` for all commands. Running plain `railway ...` will fail unless Railway is globally installed.
-- New Railway users (or accounts with no projects yet) should run `pnpm --package=@railway/cli dlx railway init -n stagetimer-backend` to create a project before linking services.
-- `railway variable set` requires a linked service. If you see `No service linked`, run `railway add --service ...` (or `railway service link ...`) first.
-- Deploying with `railway up server --path-as-root` avoids building the frontend in Railway.
+- The Docker daemon's containerd image store breaks `heroku container:push` with `error from registry: unsupported`. Workaround: `docker save` the image, then push with `crane push` (go-containerregistry) using the Heroku registry credentials from `~/.docker/config.json`, then `heroku container:release web`.
+- The server is single-dyno / demo-oriented by design: sessions, donation totals, and webhook dedup state live in memory and reset on every restart. Do not scale to multiple dynos without moving this state to shared durable storage. Eco dynos sleep after ~30 minutes of inactivity, which also wakes the in-memory state fresh.
+- The server sends a WebSocket ping every 30s so Heroku's router does not idle-drop connections.
+- Webhooks registered in Lemon Squeezy must point to the hashed app URL, e.g. `https://stage-timer-backend-9a2d3f8dcbec.herokuapp.com/api/lemon/webhook`.
 
 ### Step 2: Deploy frontend to Netlify
 
@@ -108,15 +116,14 @@ Notes:
 3. Add Netlify environment variable:
 	 - NETLIFY_NEXT_PLUGIN_SKIP=true
 4. Add frontend environment variables in Netlify Production context:
-	 - NEXT_PUBLIC_API_URL=https://your-backend.railway.app
-	 - NEXT_PUBLIC_WS_URL=wss://your-backend.railway.app/ws
+	 - NEXT_PUBLIC_API_URL=https://your-backend-<hash>.herokuapp.com
+	 - NEXT_PUBLIC_WS_URL=wss://your-backend-<hash>.herokuapp.com/ws
+	 - NEXT_PUBLIC_LEMON_SQUEEZY_CHECKOUT_URL=https://your-store.lemonsqueezy.com/checkout/buy/VARIANT_ID
 5. Trigger a production deploy.
 
 ### Step 3: Final CORS alignment
 
-After Netlify gives you the final production URL:
-
-1. Update Railway backend variable:
+1. Update Heroku backend variable:
 	 - PUBLIC_ORIGIN=https://your-final-site.netlify.app
 2. Redeploy backend service.
 3. Redeploy frontend so all values are in sync.
@@ -127,6 +134,7 @@ After Netlify gives you the final production URL:
 2. Create a controller session.
 3. Join display with session code.
 4. Test start, pause, resume, reset, +30s, -30s, and end session.
+5. Test the "Support the Creator" overlay checkout (use Lemon Squeezy test mode first).
 
 ## Optional CLI Commands
 
@@ -136,64 +144,91 @@ Netlify:
 pnpm --package=netlify-cli dlx netlify login
 pnpm --package=netlify-cli dlx netlify init
 pnpm --package=netlify-cli dlx netlify env:set NETLIFY_NEXT_PLUGIN_SKIP true --context production
-pnpm --package=netlify-cli dlx netlify env:set NEXT_PUBLIC_API_URL https://your-backend.railway.app --context production
-pnpm --package=netlify-cli dlx netlify env:set NEXT_PUBLIC_WS_URL wss://your-backend.railway.app/ws --context production
-NEXT_PUBLIC_API_URL=https://your-backend.railway.app NEXT_PUBLIC_WS_URL=wss://your-backend.railway.app/ws pnpm run build
+pnpm --package=netlify-cli dlx netlify env:set NEXT_PUBLIC_API_URL https://your-backend-<hash>.herokuapp.com --context production
+pnpm --package=netlify-cli dlx netlify env:set NEXT_PUBLIC_WS_URL wss://your-backend-<hash>.herokuapp.com/ws --context production
+pnpm --package=netlify-cli dlx netlify env:set NEXT_PUBLIC_LEMON_SQUEEZY_CHECKOUT_URL https://your-store.lemonsqueezy.com/checkout/buy/<id>?embed=1 --context production
+NEXT_PUBLIC_API_URL=... NEXT_PUBLIC_WS_URL=... NEXT_PUBLIC_LEMON_SQUEEZY_CHECKOUT_URL=... pnpm run build
 pnpm --package=netlify-cli dlx netlify deploy --prod --no-build --dir out
 ```
 
-Railway:
+Heroku:
 
 ```bash
-pnpm --package=@railway/cli dlx railway login
-pnpm --package=@railway/cli dlx railway init -n stagetimer-backend
-pnpm --package=@railway/cli dlx railway add --service stagetimer-backend-api
-pnpm --package=@railway/cli dlx railway service link stagetimer-backend-api
-pnpm --package=@railway/cli dlx railway variable set NODE_ENV=production PUBLIC_ORIGIN=https://your-site.netlify.app CORS_ALLOW_ALL=0 SESSION_TTL_MINUTES=120 SESSION_CODE_ALPHABET=23456789ABCDEFGHJKMNPQRSTUVWXYZ
-pnpm --package=@railway/cli dlx railway up server --path-as-root -d
-pnpm --package=@railway/cli dlx railway service status
-pnpm --package=@railway/cli dlx railway domain
-curl https://your-backend.railway.app/api/health
+heroku create stage-timer-backend --region us
+heroku stack:set container --app stage-timer-backend
+heroku config:set NODE_ENV=production PUBLIC_ORIGIN=https://your-site.netlify.app CORS_ALLOW_ALL=0 SESSION_TTL_MINUTES=120 SESSION_CODE_ALPHABET=23456789ABCDEFGHJKMNPQRSTUVWXYZ --app stage-timer-backend
+heroku config:set LEMON_SQUEEZY_WEBHOOK_SECRET --prompt --app stage-timer-backend
+cd server && heroku container:push web --app stage-timer-backend && heroku container:release web --app stage-timer-backend
+heroku logs --tail --app stage-timer-backend
 ```
 
-If `railway up server --path-as-root` fails with a Dockerfile parse error from a Windows-mounted path (`/mnt/c/...`), deploy from a Linux temp directory:
+## CodeRabbit (local reviews before commit)
+
+The CodeRabbit CLI (`cr`) reviews local git changes before they are committed. It is already installed and authenticated (`coderabbit auth status`).
+
+Quick usage:
 
 ```bash
-TMP_DIR=/tmp/stagetimer-backend-deploy
-rm -rf "$TMP_DIR" && mkdir -p "$TMP_DIR"
-cp /mnt/c/Users/<you>/path/to/repo/server/Dockerfile /mnt/c/Users/<you>/path/to/repo/server/package.json /mnt/c/Users/<you>/path/to/repo/server/server.js "$TMP_DIR"/
-cd "$TMP_DIR"
-pnpm --package=@railway/cli dlx railway up . --path-as-root -d -p <PROJECT_ID> -e production -s stagetimer-backend-api
+cr review --agent -t uncommitted   # review staged + local edits, structured JSON
+cr review --agent --base develop   # review everything vs the empty develop baseline
+cr doctor                          # diagnose install/auth/git issues
 ```
+
+For a full-repo review (baseline vs empty `develop` branch, which the CLI's
+three-dot diff cannot do directly because there is no merge base), use a
+worktree sandbox:
+
+```bash
+git worktree add /tmp/cr-wt develop
+rsync -a --exclude node_modules --exclude .git --exclude out --exclude .next --exclude .netlify . /tmp/cr-wt/
+cd /tmp/cr-wt
+setsid nohup cr review --agent --include-untracked > /tmp/cr-review.json 2>/tmp/cr-review.err < /dev/null &
+```
+
+Reviews take 7-30+ minutes for a full repo; run them in the background.
+
+## Testing (Vitest)
+
+Unit + integration tests live in `tests/` (server tests in `tests/server/`,
+frontend/component tests in `tests/frontend/`). Server tests boot the real
+Express + WebSocket server on an ephemeral port (see `server/server.js`, which
+exports `app`/`start` and only listens when run directly).
+
+```bash
+npm test            # run everything
+npm run test:watch  # watch mode
+npm run test:server   # REST + webhook HMAC + WebSocket flows
+npm run test:frontend # libs + components (jsdom)
+```
+
+Covered so far: webhook HMAC validation (valid/invalid signatures, malformed
+totals, missing secret), donation tallies and refunds, session creation,
+WebSocket join/auth/role/end flows, `formatDuration`, session link building and
+QR-scan parsing, API/WS URL fallbacks, and the Support (Lemon Squeezy) button
+overlay lifecycle.
 
 ## Troubleshooting
-
-- Error: Cannot install with frozen lockfile
-	- Run pnpm install locally and commit updated pnpm-lock.yaml.
 
 - Netlify blocked Next.js due CVE policy
 	- Upgrade next and eslint-config-next to a patched release, then redeploy.
 
 - Frontend cannot connect to backend
-	- Confirm NEXT_PUBLIC_API_URL and NEXT_PUBLIC_WS_URL on Netlify.
-	- Confirm PUBLIC_ORIGIN on Railway matches Netlify production URL.
+	- Confirm NEXT_PUBLIC_API_URL and NEXT_PUBLIC_WS_URL on Netlify use the hashed Heroku app URL (new apps no longer resolve at `<name>.herokuapp.com`).
+	- Confirm PUBLIC_ORIGIN on Heroku matches Netlify production URL.
 
-- Railway error: `No service linked`
-	- Create/link a service first: `pnpm --package=@railway/cli dlx railway add --service stagetimer-backend-api`.
-	- Then rerun `pnpm --package=@railway/cli dlx railway variable set ...`.
+- `error from registry: unsupported` on `heroku container:push`
+	- Docker containerd image store incompatibility; push with `crane` instead (see notes in Step 1).
 
-- Shell error: `zsh: command not found: railway`
-	- Use `pnpm --package=@railway/cli dlx railway ...` unless Railway CLI is installed globally.
+- Webhook returns 401 in Heroku logs
+	- The X-Signature header must be computed with the exact same secret as LEMON_SQUEEZY_WEBHOOK_SECRET, over the raw request body.
 
-- Railway build error: `Dockerfile parse error on line 1: unknown instruction`
-	- If deploying from `/mnt/c/...`, retry from a Linux temp directory using the fallback commands above.
-
-- Site returns "Internal Server Error" on Netlify
-	- If the site was deployed as SSR/runtime and crashes in `___netlify-server-handler`, switch to static export deployment (`out`) and deploy that output.
-	- Ensure `NETLIFY_NEXT_PLUGIN_SKIP=true` in production environment.
+- Lemon Squeezy webhooks not firing
+	- Test-mode webhooks only fire for test-mode orders; recreate/update the webhook after disabling test mode.
+	- `next/font` fails to fetch Google Fonts in some environments: the fonts are self-hosted in src/app/fonts/, so remove that workaround only if you have network access during builds.
 
 ## Notes
 
 - Sessions are in-memory (no database): restarting backend clears active sessions.
-- For production reliability, enable auto-restart and monitor Railway logs.
+- Donation tallies are in-memory too: restarting clears /api/donations.
+- For production reliability, enable auto-restart and monitor Heroku logs.
 

@@ -1,0 +1,44 @@
+# CodeRabbit configuration — https://docs.coderabbit.ai/
+language: en-US
+early_access: false
+
+reviews:
+  profile: assertive
+  request_changes_workflow: true
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: false
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+      - main
+      - develop
+    ignore_title_patterns:
+      - "^chore: (bump|release|lock)"
+  path_instructions:
+    - path: "server/**"
+      instructions: |
+        Review security-sensitive WebSocket and webhook handling: verify
+        signature checks, input validation, socket lifecycle, and session
+        expiry behavior.
+    - path: "tests/**"
+      instructions: |
+        Ensure tests assert behavior, not implementation, and follow the
+        existing Vitest patterns (supertest for REST, real WebSocket clients
+        on ephemeral ports, Testing Library for components).
+
+chat:
+  auto_reply: true
+  enable: true
+
+tools:
+  shellcheck:
+    enabled: true
+  eslint:
+    enabled: true
+  markdownlint:
+    enabled: true
+  secret-leak:
+    enabled: true
