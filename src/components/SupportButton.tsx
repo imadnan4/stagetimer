@@ -38,7 +38,7 @@ export default function SupportButton() {
   return (
     <a
       href={CHECKOUT_URL}
-      className="lemonsqueezy-button inline-flex items-center justify-center rounded-xl bg-white/10 border border-white/10 px-5 h-11 font-medium hover:bg-white/15 transition-colors"
+      className="lemonsqueezy-button btn-donate inline-flex items-center justify-center rounded-[0.5em] px-4 py-1 h-9 text-base font-medium"
     >
       Support the Creator
     </a>

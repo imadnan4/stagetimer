@@ -45,6 +45,8 @@ next-env.d.ts
 agents
 
 skill-lock.json
+skills-lock.json
 .skills-lock.json
+docs/
 # Local Netlify folder
 .netlify

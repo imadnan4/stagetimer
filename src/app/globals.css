@@ -1,26 +1,403 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/* ------------------------------------------------------------------ *
+ * Design tokens
+ *
+ * Values extracted verbatim from the reference site's compiled CSS.
+ * The `--color-*` block is a bridge: it registers the semantic colour
+ * names with Tailwind so `bg-primary`, `text-muted-foreground`, etc.
+ * are generated, while the *values* live in the `[data-theme=quartz]`
+ * block further down (and can be overridden per subtree, exactly as the
+ * reference does with `<body>` / `<main>`).
+ * ------------------------------------------------------------------ */
 
-@theme inline {
+@theme {
+  --font-sans:
+    var(--font-geist-sans),
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue",
+    "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji",
+    "Segoe UI Symbol", "Noto Color Emoji";
+  --font-mono: var(--font-geist-mono), "Fira Code", monospace;
+
+  /*
+   * The reference sets `--radius: .625rem` under `[data-theme=quartz]` and
+   * derives the scale from it, but its Tailwind build resolves the BARE
+   * corner utilities (`rounded`, `rounded-tl`, …) to a hard-coded `0.25rem`.
+   * Tailwind 4.3 instead routes them through `--radius`, so `--radius` is
+   * pinned to `0.25rem` and the derived steps are spelled out at their
+   * resolved Quartz values instead. Measured: bare = 4px, sm = 6px,
+   * md = 8px, lg = 10px, xl = 12px, 2xl = 16px, 3xl = 24px.
+   */
+  --radius: 0.25rem;
+  --radius-xs: 0.125rem;
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.625rem;
+  --radius-xl: 0.75rem;
+  --radius-2xl: 1rem;
+  --radius-3xl: 1.5rem;
+
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-illustration: var(--illustration);
+  --color-border-illustration: var(--border-illustration);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-ring: var(--ring);
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+  --animate-hue-rotate: hue-rotate 4s infinite;
+  --animate-scale-in: scale-in 0.2s ease-out;
+  --animate-scale-out: scale-out 0.16s ease-out;
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+
+  @keyframes hue-rotate {
+    0% {
+      filter: hue-rotate();
+    }
+    to {
+      filter: hue-rotate(360deg);
+    }
+  }
+  @keyframes scale-in {
+    0% {
+      opacity: 0;
+      transform: rotateX(-8deg) scale(0.96);
+    }
+    to {
+      opacity: 1;
+      transform: rotateX(0) scale(1);
+    }
+  }
+  @keyframes scale-out {
+    0% {
+      opacity: 1;
+      transform: rotateX(0) scale(1);
+    }
+    to {
+      opacity: 0;
+      transform: rotateX(-8deg) scale(0.96);
+    }
+  }
+  @keyframes accordion-down {
+    0% {
+      height: 0;
+    }
+    to {
+      height: var(
+        --radix-accordion-content-height,
+        var(--accordion-panel-height)
+      );
+    }
+  }
+  @keyframes accordion-up {
+    0% {
+      height: var(
+        --radix-accordion-content-height,
+        var(--accordion-panel-height)
+      );
+    }
+    to {
+      height: 0;
+    }
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+/* ------------------------------------------------------------------ *
+ * Quartz theme (light only — the reference's dark variant is identical)
+ * ------------------------------------------------------------------ */
+
+[data-theme="quartz"] {
+  --color-background: var(--color-zinc-100);
+  --color-foreground: var(--color-zinc-950);
+  --color-card: var(--color-white);
+  --color-illustration: var(--color-white);
+  --color-card-foreground: var(--color-zinc-950);
+  --color-popover: var(--color-white);
+  --color-popover-foreground: var(--color-zinc-950);
+  --color-primary: var(--color-indigo-500);
+  --color-primary-foreground: var(--color-white);
+  --color-secondary: var(--color-sky-100);
+  --color-secondary-foreground: var(--color-sky-600);
+  --color-muted: var(--color-zinc-100);
+  --color-muted-foreground: var(--color-zinc-600);
+  --color-accent: var(--color-zinc-100);
+  --color-accent-foreground: var(--color-zinc-800);
+  --color-destructive: var(--color-red-600);
+  --color-border: var(--color-zinc-200);
+  --border-illustration: #09090b13;
+  --color-border-illustration: var(--border-illustration);
+  --color-input: var(--color-zinc-200);
+  --color-ring: var(--color-indigo-500);
+  color-scheme: light;
 }
+
+@supports (color: color-mix(in lab, red, red)) {
+  [data-theme="quartz"] {
+    --border-illustration: color-mix(
+      in oklab,
+      var(--color-zinc-950) 7.5%,
+      transparent
+    );
+  }
+}
+
+:is([data-theme="quartz"] > *),
+:is([data-theme="dark"] > *) {
+  color: var(--color-foreground);
+}
+
+/* ------------------------------------------------------------------ *
+ * Dark theme
+ *
+ * The page itself renders with `data-theme="quartz"` (light only), but
+ * one element inside the Benefits section opts in with `data-theme="dark"`.
+ * ------------------------------------------------------------------ */
+
+[data-theme="dark"] {
+  --color-background: var(--color-zinc-950);
+  --color-foreground: var(--color-white);
+  --color-card: #0e0e10;
+  --color-illustration: var(--color-zinc-900);
+  --color-card-foreground: var(--color-white);
+  --color-popover: var(--color-zinc-900);
+  --color-popover-foreground: var(--color-white);
+  --color-primary: var(--color-white);
+  --color-primary-foreground: var(--color-zinc-950);
+  --color-secondary: var(--color-zinc-800);
+  --color-secondary-foreground: var(--color-white);
+  --color-muted: var(--color-zinc-800);
+  --color-muted-foreground: var(--color-zinc-400);
+  --color-accent: var(--color-zinc-800);
+  --color-accent-foreground: var(--color-white);
+  --color-destructive: var(--color-red-700);
+  --color-destructive-foreground: var(--color-white);
+  --color-border: color-mix(in srgb, #fff 10%, transparent);
+  --border-illustration: #ffffff01;
+  --color-input: var(--color-zinc-800);
+  --color-ring: var(--color-zinc-600);
+  color-scheme: dark;
+}
+
+@supports (color: color-mix(in lab, red, red)) {
+  [data-theme="dark"] {
+    --color-card: color-mix(
+      in oklab,
+      var(--color-zinc-800) 15%,
+      var(--color-zinc-950)
+    );
+    --color-border: color-mix(in oklab, var(--color-white) 10%, transparent);
+    --border-illustration: color-mix(
+      in oklab,
+      var(--color-white) 7.5%,
+      transparent
+    );
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Fade-mask utilities (Tailark's `mask-*-from-*` family)
+ * ------------------------------------------------------------------ */
+
+@utility mask-radial-from-* {
+  -webkit-mask-image:
+    var(--tw-mask-linear), var(--tw-mask-radial), var(--tw-mask-conic);
+  mask-image:
+    var(--tw-mask-linear), var(--tw-mask-radial), var(--tw-mask-conic);
+  --tw-mask-radial-stops:
+    var(--tw-mask-radial-shape) var(--tw-mask-radial-size) at
+      var(--tw-mask-radial-position),
+    var(--tw-mask-radial-from-color) var(--tw-mask-radial-from-position),
+    var(--tw-mask-radial-to-color) var(--tw-mask-radial-to-position);
+  --tw-mask-radial: radial-gradient(var(--tw-mask-radial-stops));
+  --tw-mask-radial-from-position: --value(--percentage);
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
+}
+
+@utility mask-radial-to-* {
+  -webkit-mask-image:
+    var(--tw-mask-linear), var(--tw-mask-radial), var(--tw-mask-conic);
+  mask-image:
+    var(--tw-mask-linear), var(--tw-mask-radial), var(--tw-mask-conic);
+  --tw-mask-radial-stops:
+    var(--tw-mask-radial-shape) var(--tw-mask-radial-size) at
+      var(--tw-mask-radial-position),
+    var(--tw-mask-radial-from-color) var(--tw-mask-radial-from-position),
+    var(--tw-mask-radial-to-color) var(--tw-mask-radial-to-position);
+  --tw-mask-radial: radial-gradient(var(--tw-mask-radial-stops));
+  --tw-mask-radial-to-position: --value(--percentage);
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
+}
+
+@utility mask-b-from-* {
+  -webkit-mask-image:
+    var(--tw-mask-linear), var(--tw-mask-radial), var(--tw-mask-conic);
+  mask-image:
+    var(--tw-mask-linear), var(--tw-mask-radial), var(--tw-mask-conic);
+  --tw-mask-linear:
+    var(--tw-mask-left), var(--tw-mask-right), var(--tw-mask-bottom),
+    var(--tw-mask-top);
+  --tw-mask-bottom: linear-gradient(
+    to bottom,
+    var(--tw-mask-bottom-from-color) var(--tw-mask-bottom-from-position),
+    var(--tw-mask-bottom-to-color) var(--tw-mask-bottom-to-position)
+  );
+  --tw-mask-bottom-from-position: --value(--percentage);
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
+}
+
+@utility mask-t-from-* {
+  -webkit-mask-image:
+    var(--tw-mask-linear), var(--tw-mask-radial), var(--tw-mask-conic);
+  mask-image:
+    var(--tw-mask-linear), var(--tw-mask-radial), var(--tw-mask-conic);
+  --tw-mask-linear:
+    var(--tw-mask-left), var(--tw-mask-right), var(--tw-mask-bottom),
+    var(--tw-mask-top);
+  --tw-mask-top: linear-gradient(
+    to top,
+    var(--tw-mask-top-from-color) var(--tw-mask-top-from-position),
+    var(--tw-mask-top-to-color) var(--tw-mask-top-to-position)
+  );
+  --tw-mask-top-from-position: --value(--percentage);
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
+}
+
+/* `mask-radial-at-*` only sets a position variable. */
+@utility mask-radial-at-top {
+  --tw-mask-radial-position: top;
+}
+@utility mask-radial-at-bottom {
+  --tw-mask-radial-position: bottom;
+}
+@utility mask-radial-at-center {
+  --tw-mask-radial-position: center;
+}
+
+/* ------------------------------------------------------------------ *
+ * Compatibility shims
+ * ------------------------------------------------------------------ */
+
+/*
+ * The reference labels the chart's X axis with
+ * `[&_.recharts-cartesian-axis-tick_text]:fill-muted-foreground`, whose `_`
+ * is a Tailwind space escape — i.e. `.recharts-cartesian-axis-tick text`.
+ * Recharts 3 moved the tick text out of that group into a sibling
+ * `.recharts-cartesian-axis-tick-label`, so the reference selector no longer
+ * matches. Re-target it to keep the measured label colour (#52525c).
+ */
+[data-slot="chart"] .recharts-cartesian-axis-tick-label text {
+  fill: var(--color-muted-foreground);
+}
+
+/* ------------------------------------------------------------------ *
+ * Primary Button - verbatim from styled-components specification
+ * ------------------------------------------------------------------ */
+.btn-donate {
+  --clr-font-main: hsla(0, 0%, 20%, 1);
+  --btn-bg-1: hsla(194, 100%, 69%, 1);
+  --btn-bg-2: hsla(217, 100%, 56%, 1);
+  --btn-bg-color: hsla(360, 100%, 100%, 1);
+  --radii: 0.5em;
+  cursor: pointer;
+  background-size: 280% auto;
+  background-image: linear-gradient(
+    325deg,
+    var(--btn-bg-2) 0%,
+    var(--btn-bg-1) 55%,
+    var(--btn-bg-2) 90%
+  );
+  border: none;
+  border-radius: var(--radii);
+  color: var(--btn-bg-color);
+  box-shadow:
+    0px 0px 20px rgba(71, 184, 255, 0.5),
+    0px 5px 5px -1px rgba(58, 125, 233, 0.25),
+    inset 4px 4px 8px rgba(175, 230, 255, 0.5),
+    inset -4px -4px 8px rgba(19, 95, 216, 0.35);
+  transition: 0.8s;
+}
+
+.btn-donate:hover {
+  background-position: right top;
+}
+
+.btn-donate:is(:focus, :focus-visible, :active) {
+  outline: none;
+  box-shadow:
+    0 0 0 3px var(--btn-bg-color),
+    0 0 0 6px var(--btn-bg-2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn-donate {
+    transition: linear;
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Text & Scroll Reveal Animations (Emil Kowalski craft easing)
+ * ------------------------------------------------------------------ */
+
+@keyframes smooth-text-reveal {
+  0% {
+    opacity: 0;
+    transform: translateY(18px);
+    filter: blur(6px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0px);
+  }
+}
+
+.animate-reveal {
+  animation: smooth-text-reveal 0.85s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.scroll-reveal {
+  opacity: 0;
+  transform: translateY(20px);
+  filter: blur(6px);
+  transition:
+    opacity 0.8s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.8s cubic-bezier(0.16, 1, 0.3, 1),
+    filter 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: opacity, transform, filter;
+}
+
+.scroll-reveal.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+  filter: blur(0px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-reveal,
+  .scroll-reveal {
+    animation: none !important;
+    transition: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+    filter: none !important;
+  }
+}
+
