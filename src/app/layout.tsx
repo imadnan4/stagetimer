@@ -20,8 +20,11 @@ export const metadata: Metadata = {
   openGraph: {
     title: "StageTimer — Real-Time Stage Timer & Confidence Monitor",
     description:
-      "Free professional online stage timer and confidence monitor for speakers, conferences, and live events.",
+      "Free professional online stage timer and confidence monitor for speakers, conferences, TV broadcasts, and live events.",
     type: "website",
+  },
+  verification: {
+    google: "BNhc9CWN3upYaDoQHEmHmAWQ1ibrfrkVMS_b87L5dO0",
   },
 };
 
