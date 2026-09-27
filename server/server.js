@@ -1,23 +1,49 @@
-// Simple no-DB server: REST (+/api/session, /api/lemon/webhook) and WebSocket (/ws)
+// StageTimer backend: REST (auth-gated sessions, entitlements, Polar webhooks)
+// and the synchronized WebSocket timer on /ws.
 const express = require('express');
 const http = require('http');
 const cors = require('cors');
-const crypto = require('crypto');
 const { WebSocketServer } = require('ws');
+
+const { getPool, runMigrations } = require('./lib/db');
+const { createMemoryStore, createPgStore } = require('./lib/store');
+const { identityEntries } = require('./lib/identity');
+const { getUser } = require('./lib/auth');
+const polar = require('./lib/polar');
 
 const PORT = process.env.PORT || 8787;
 const PUBLIC_ORIGIN = process.env.PUBLIC_ORIGIN || 'http://localhost:3000';
 const CORS_ALLOW_ALL = process.env.CORS_ALLOW_ALL === '1' || process.env.NODE_ENV !== 'production';
 const SESSION_TTL_MINUTES = Number(process.env.SESSION_TTL_MINUTES || 120);
 const ALPHABET = (process.env.SESSION_CODE_ALPHABET || '23456789ABCDEFGHJKMNPQRSTUVWXYZ').split('');
-const LEMON_SQUEEZY_WEBHOOK_SECRET = process.env.LEMON_SQUEEZY_WEBHOOK_SECRET || '';
+const FREE_ROOM_LIMIT = Number(process.env.FREE_ROOM_LIMIT || 5);
 const WS_HEARTBEAT_MS = 30_000;
 
-/** In-memory donation tally (cleared on restart). */
-const donations = { count: 0, totalCents: 0 };
+// Usage/entitlement storage: Postgres when DATABASE_URL is set, otherwise an
+// in-process store so local dev and the test suite run without a database.
+function initStore() {
+  const pool = getPool();
+  if (pool) return createPgStore(pool);
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('DATABASE_URL is required in production');
+  }
+  return createMemoryStore();
+}
 
-/** Deduplicates webhook deliveries that Lemon Squeezy retries. */
-const processedWebhookIds = new Set(); // `${event}:${data.id}`
+const store = initStore();
+
+// Test-only seam: lets the suite exercise authenticated flows without minting
+// real Neon JWTs. Never honored outside NODE_ENV=test.
+function resolveUser(req) {
+  if (process.env.NODE_ENV === 'test' && process.env.TEST_AUTH_USER) {
+    try {
+      return Promise.resolve(JSON.parse(process.env.TEST_AUTH_USER));
+    } catch {
+      return Promise.resolve(null);
+    }
+  }
+  return getUser(req);
+}
 
 /** @typedef {Object} Session */
 const sessions = new Map(); // code -> session
@@ -36,6 +62,7 @@ function now() { return Date.now(); }
 
 /** Create server */
 const app = express();
+app.set('trust proxy', true);
 app.use(cors({ origin: CORS_ALLOW_ALL ? true : PUBLIC_ORIGIN, credentials: false }));
 app.options('*', cors({ origin: CORS_ALLOW_ALL ? true : PUBLIC_ORIGIN, credentials: false }));
 app.use(express.json({
@@ -44,77 +71,172 @@ app.use(express.json({
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
-app.get('/api/donations', (_req, res) => res.json({ count: donations.count, totalCents: donations.totalCents }));
-
-app.post('/api/lemon/webhook', (req, res) => {
-  if (!LEMON_SQUEEZY_WEBHOOK_SECRET) return res.status(503).json({ ok: false, error: 'Webhook secret not configured' });
-  if (!req.rawBody) return res.status(400).json({ ok: false, error: 'Raw body required' });
-  const raw = req.rawBody.toString('utf8');
-  const signature = req.get('X-Signature') || '';
-  const expected = crypto.createHmac('sha256', LEMON_SQUEEZY_WEBHOOK_SECRET).update(raw, 'utf8').digest('hex');
-  const supplied = Buffer.from(signature, 'utf8');
-  const computed = Buffer.from(expected, 'utf8');
-  if (supplied.length !== computed.length || !crypto.timingSafeEqual(supplied, computed)) {
-    return res.status(401).json({ ok: false, error: 'Invalid signature' });
-  }
-  const event = req.body?.meta?.event_name || req.body?.event_name || 'unknown';
-  const orderId = req.body?.data?.id;
-  const dedupKey = `${event}:${orderId}`;
-  if (orderId) {
-    if (processedWebhookIds.has(dedupKey)) return res.json({ ok: true, duplicate: true });
-    processedWebhookIds.add(dedupKey);
-  }
-  const attributes = req.body?.data?.attributes || {};
-  const toCents = (v) => {
-    const n = Number(v ?? 0);
-    return Number.isFinite(n) ? n : null;
+/** Extract the entitlement carried by a Polar order. */
+function toOrderEntitlement(order) {
+  const safe = order && typeof order === 'object' ? order : {};
+  const meta = safe.metadata && typeof safe.metadata === 'object' ? safe.metadata : {};
+  const customer = safe.customer && typeof safe.customer === 'object' ? safe.customer : {};
+  const product = safe.product && typeof safe.product === 'object' ? safe.product : {};
+  return {
+    userId: meta.user_id || customer.external_id || null,
+    email: customer.email || safe.customer_email || null,
+    orderId: safe.id,
+    customerId: safe.customer_id || customer.id || null,
+    productId: safe.product_id || product.id || null,
+    amount: typeof safe.total_amount === 'number' ? safe.total_amount : null,
+    currency: safe.currency || null,
+    purchasedAt: safe.created_at || new Date().toISOString(),
   };
-  if (event === 'order_created') {
-    // Count donations only once the order has actually been paid
-    if (attributes.status !== 'paid') return res.json({ ok: true });
-    const cents = toCents(attributes.total);
-    if (cents === null) return res.status(400).json({ ok: false, error: 'Invalid total' });
-    donations.count += 1;
-    donations.totalCents += cents;
+}
+
+function isPaidOrder(order) {
+  if (!order || typeof order !== 'object') return false;
+  return order.paid === true || order.status === 'paid' || order.status === 'succeeded';
+}
+
+app.get('/api/me', async (req, res) => {
+  try {
+    const user = await resolveUser(req);
+    const entitled = user ? await store.isEntitled(user.id) : false;
+    let used = 0;
+    if (!entitled) {
+      const keys = identityEntries(req, user && user.id).map((e) => e.key);
+      used = (await store.getUsage(keys)).used;
+    }
+    res.json({
+      ok: true,
+      authenticated: Boolean(user),
+      user: user ? { id: user.id, email: user.email, name: user.name } : null,
+      entitled,
+      limit: FREE_ROOM_LIMIT,
+      used,
+      remaining: entitled ? null : Math.max(0, FREE_ROOM_LIMIT - used),
+    });
+  } catch (err) {
+    console.error('[api/me]', err.message);
+    res.status(500).json({ ok: false, error: 'server_error' });
   }
-  if (event === 'order_refunded') {
-    const cents = toCents(attributes.total);
-    if (cents === null) return res.status(400).json({ ok: false, error: 'Invalid total' });
-    donations.totalCents = Math.max(0, donations.totalCents - cents);
-  }
-  console.log(`[lemon-squeezy] ${event} (total donations: ${donations.count}, total cents: ${donations.totalCents})`);
-  res.json({ ok: true });
 });
 
-app.post('/api/session', (req, res) => {
-  const presetMs = typeof req.body?.presetMs === 'number' ? req.body.presetMs : 5 * 60 * 1000;
-  const allowOvertime = !!req.body?.allowOvertime;
-  const code = genCode(6);
-  const controllerToken = genToken();
-  const displayToken = genToken();
-  const session = {
-    code,
-    controllerToken,
-    displayToken,
-    activeControllerToken: null,
-    status: 'idle',
-    presetDurationMs: presetMs,
-    startTime: null,
-    pauseAccumulatedMs: 0,
-    lastPausedAt: null,
-    allowOvertime,
-    clients: { controllers: new Set(), displays: new Set() },
-    createdAt: now(),
-    expiresAt: now() + SESSION_TTL_MINUTES * 60 * 1000,
-  };
-  sessions.set(code, session);
-  res.json({
-    code,
-    controllerToken,
-    displayToken,
-    controlUrl: `/control?code=${code}&token=${controllerToken}`,
-    displayUrl: `/display?code=${code}&join=${displayToken}`,
-  });
+app.post('/api/session', async (req, res) => {
+  try {
+    // Lifetime access is unlimited; everyone else is metered against their
+    // user / device / IP identities.
+    const user = await resolveUser(req);
+    const entitled = user ? await store.isEntitled(user.id) : false;
+    if (!entitled) {
+      const entries = identityEntries(req, user && user.id);
+      const { allowed, used } = await store.reserveRoom(entries, FREE_ROOM_LIMIT);
+      if (!allowed) {
+        return res.status(402).json({
+          ok: false,
+          error: 'limit_reached',
+          reason: user ? 'unpaid' : 'anonymous',
+          limit: FREE_ROOM_LIMIT,
+          used,
+        });
+      }
+    }
+
+    const presetMs = typeof req.body?.presetMs === 'number' ? req.body.presetMs : 5 * 60 * 1000;
+    const allowOvertime = !!req.body?.allowOvertime;
+    const code = genCode(6);
+    const controllerToken = genToken();
+    const displayToken = genToken();
+    const session = {
+      code,
+      controllerToken,
+      displayToken,
+      activeControllerToken: null,
+      status: 'idle',
+      presetDurationMs: presetMs,
+      startTime: null,
+      pauseAccumulatedMs: 0,
+      lastPausedAt: null,
+      allowOvertime,
+      clients: { controllers: new Set(), displays: new Set() },
+      createdAt: now(),
+      expiresAt: now() + SESSION_TTL_MINUTES * 60 * 1000,
+    };
+    sessions.set(code, session);
+    res.json({
+      code,
+      controllerToken,
+      displayToken,
+      controlUrl: `/control?code=${code}&token=${controllerToken}`,
+      displayUrl: `/display?code=${code}&join=${displayToken}`,
+    });
+  } catch (err) {
+    console.error('[api/session]', err.message);
+    res.status(500).json({ ok: false, error: 'server_error' });
+  }
+});
+
+app.post('/api/checkout', async (req, res) => {
+  try {
+    const user = await resolveUser(req);
+    if (!user) return res.status(401).json({ ok: false, error: 'unauthorized' });
+    if (await store.isEntitled(user.id)) {
+      return res.json({ ok: true, alreadyEntitled: true });
+    }
+    const origin = PUBLIC_ORIGIN.replace(/\/$/, '');
+    const checkout = await polar.createCheckout({
+      user,
+      successUrl: `${origin}/control?checkout=success`,
+      returnUrl: origin,
+    });
+    res.json({ ok: true, id: checkout.id, url: checkout.url });
+  } catch (err) {
+    console.error('[api/checkout]', err.message);
+    res.status(502).json({ ok: false, error: 'checkout_unavailable' });
+  }
+});
+
+app.post('/api/polar/portal', async (req, res) => {
+  try {
+    const user = await resolveUser(req);
+    if (!user) return res.status(401).json({ ok: false, error: 'unauthorized' });
+    const customerId = await store.getPolarCustomerId(user.id);
+    if (!customerId) return res.status(404).json({ ok: false, error: 'no_customer' });
+    const origin = PUBLIC_ORIGIN.replace(/\/$/, '');
+    const portal = await polar.createPortalSession({ customerId, returnUrl: origin });
+    res.json({ ok: true, url: portal.url });
+  } catch (err) {
+    console.error('[api/polar/portal]', err.message);
+    res.status(502).json({ ok: false, error: 'portal_unavailable' });
+  }
+});
+
+app.post('/api/polar/webhook', async (req, res) => {
+  const secret = process.env.POLAR_WEBHOOK_SECRET || '';
+  if (!secret) {
+    return res.status(503).json({ ok: false, error: 'Webhook secret not configured' });
+  }
+  const event = polar.verifyWebhook(req.rawBody, req.headers, secret);
+  if (!event) return res.status(401).json({ ok: false, error: 'Invalid signature' });
+
+  const deliveryId = req.get('webhook-id') || event.id || '';
+  const type = event.type || 'unknown';
+  const data = event.data || {};
+  try {
+    if (type === 'order.paid' || (type === 'order.created' && isPaidOrder(data))) {
+      const entitlement = toOrderEntitlement(data);
+      if (!entitlement.userId) {
+        console.warn(`[polar] paid order ${entitlement.orderId} is missing user_id metadata`);
+      } else {
+        await store.grantFromOrder(entitlement);
+        console.log(`[polar] granted lifetime access to user ${entitlement.userId} (order ${entitlement.orderId})`);
+      }
+    } else if (type === 'order.refunded' || (type === 'order.updated' && data.status === 'refunded')) {
+      await store.revokeOrder(data.id);
+      console.log(`[polar] revoked access for order ${data.id}`);
+    }
+    const duplicate = deliveryId ? !(await store.recordWebhook(deliveryId, type)) : false;
+    res.json({ ok: true, duplicate });
+  } catch (err) {
+    console.error('[polar] webhook handling failed:', err.message);
+    res.status(500).json({ ok: false, error: 'Webhook handling failed' });
+  }
 });
 
 const server = http.createServer(app);
@@ -306,25 +428,37 @@ wss.on('connection', (ws) => {
 });
 
 if (require.main === module) {
-  server.listen(PORT, () => {
-    console.log(`WS/REST server listening on http://localhost:${PORT}`);
-  });
+  start(PORT)
+    .then(() => {
+      console.log(`WS/REST server listening on http://localhost:${PORT}`);
+    })
+    .catch((err) => {
+      console.error(`Failed to start server: ${err.message}`);
+      process.exit(1);
+    });
 }
 
-module.exports = { app, server, start };
+module.exports = { app, server, start, store, FREE_ROOM_LIMIT };
 
 function start(port = PORT) {
-  return new Promise((resolve, reject) => {
-    const onError = (err) => {
-      server.off('listening', onListening);
-      reject(err);
-    };
-    const onListening = () => {
-      server.off('error', onError);
-      resolve(server);
-    };
-    server.once('error', onError);
-    server.once('listening', onListening);
-    server.listen(port);
-  });
+  return runMigrations()
+    .catch((err) => {
+      throw new Error(`database migrations failed: ${err.message}`);
+    })
+    .then(
+      () =>
+        new Promise((resolve, reject) => {
+          const onError = (err) => {
+            server.off('listening', onListening);
+            reject(err);
+          };
+          const onListening = () => {
+            server.off('error', onError);
+            resolve(server);
+          };
+          server.once('error', onError);
+          server.once('listening', onListening);
+          server.listen(port);
+        })
+    );
 }

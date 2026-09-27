@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 
+import { AuthProvider } from "@/components/auth/AuthProvider";
+
 import { geistMono, geistSans } from "@/lib/fonts";
 
 import "./globals.css";
@@ -35,7 +37,7 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col bg-white [--color-primary:var(--color-zinc-800)]">
-        {children}
+        <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
   );

@@ -310,7 +310,7 @@
 /* ------------------------------------------------------------------ *
  * Primary Button - verbatim from styled-components specification
  * ------------------------------------------------------------------ */
-.btn-donate {
+.btn-primary {
   --clr-font-main: hsla(0, 0%, 20%, 1);
   --btn-bg-1: hsla(194, 100%, 69%, 1);
   --btn-bg-2: hsla(217, 100%, 56%, 1);
@@ -335,11 +335,11 @@
   transition: 0.8s;
 }
 
-.btn-donate:hover {
+.btn-primary:hover {
   background-position: right top;
 }
 
-.btn-donate:is(:focus, :focus-visible, :active) {
+.btn-primary:is(:focus, :focus-visible, :active) {
   outline: none;
   box-shadow:
     0 0 0 3px var(--btn-bg-color),
@@ -347,7 +347,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .btn-donate {
+  .btn-primary {
     transition: linear;
   }
 }

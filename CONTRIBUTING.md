@@ -8,7 +8,7 @@ organized and what every contribution must satisfy before it is merged.
 ```
 src/               Next.js frontend (static export)
 src/app/           Pages (home, /control, /display) + layout + fonts
-src/components/    Reusable components (e.g. SupportButton)
+src/components/    Reusable components (auth, paywall, purchase, sections)
 src/lib/           Pure helpers (time formatting, session links, WS client)
 server/            Express + WebSocket backend (server.js), Dockerfile
 tests/             Vitest suites: tests/server (REST + WS) and tests/frontend (jsdom)

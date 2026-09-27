@@ -1,4 +1,5 @@
 import { Reveal } from "@/components/ui/reveal";
+import { UpgradeButton } from "@/components/purchase/UpgradeButton";
 
 export function Pricing() {
   const freeFeatures = [
@@ -144,12 +145,9 @@ export function Pricing() {
                 Full professional confidence monitor suite for AV crews and events.
               </p>
 
-              <a
-                href="/control"
-                className="btn-donate block text-center py-2.5 px-4 rounded-xl text-sm font-medium text-white transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] shadow-md shadow-sky-500/25"
-              >
+              <UpgradeButton className="btn-primary block w-full cursor-pointer text-center py-2.5 px-4 rounded-xl text-sm font-medium text-white transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] shadow-md shadow-sky-500/25">
                 Get Lifetime Access
-              </a>
+              </UpgradeButton>
 
               <div className="flex items-center gap-2.5 w-full text-[10px] font-mono tracking-wider text-zinc-400 my-1">
                 <div className="flex-1 h-px bg-zinc-200" />

@@ -13,13 +13,16 @@
     "test:watch": "vitest",
     "test:server": "vitest run --project server",
     "test:frontend": "vitest run --project frontend",
-    "server": "node server/server.js",
+    "server": "node scripts/run-server.js",
     "dev:all": "concurrently \"npm run server\" \"next dev --turbopack\"",
     "dev:all:bun": "concurrently \"bun run server\" \"bun run dev\""
   },
   "dependencies": {
+    "@neon/config": "^1.8.2",
+    "@neon/env": "^1.4.7",
     "@zxing/browser": "^0.1.5",
     "@zxing/library": "^0.21.3",
+    "better-auth": "^1.6.23",
     "clsx": "^2.1.1",
     "cors": "^2.8.5",
     "express": "^4.19.2",

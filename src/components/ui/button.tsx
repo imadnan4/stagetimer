@@ -23,7 +23,7 @@ const BASE_BLOCK = BASE.replace(
 );
 
 const VARIANTS = {
-  primary: "btn-donate",
+  primary: "btn-primary",
   secondary:
     "transition-colors duration-200 shadow-sm shadow-black/15 border border-transparent bg-card text-foreground ring ring-foreground/10 hover:bg-muted/50 dark:ring-foreground/15 dark:hover:bg-muted/50 focus-visible:ring-1 focus-visible:ring-ring",
   destructive:

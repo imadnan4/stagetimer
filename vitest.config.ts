@@ -20,6 +20,9 @@ export default defineConfig({
         test: {
           name: "frontend",
           environment: "jsdom",
+          environmentOptions: {
+            jsdom: { url: "http://localhost:3000/" },
+          },
           include: ["tests/frontend/**/*.test.{ts,tsx}"],
           setupFiles: ["tests/frontend/setup.ts"],
         },

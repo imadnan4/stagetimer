@@ -11,7 +11,6 @@ const openSockets = new Set();
 
 beforeEach(async () => {
   vi.resetModules();
-  process.env.LEMON_SQUEEZY_WEBHOOK_SECRET = "test-secret";
   const mod = await import(SERVER_PATH);
   httpServer = await mod.start(0);
   const port = httpServer.address().port;
@@ -25,7 +24,6 @@ afterEach(async () => {
   }
   openSockets.clear();
   await new Promise((resolve) => httpServer.close(resolve));
-  delete process.env.LEMON_SQUEEZY_WEBHOOK_SECRET;
   vi.unstubAllGlobals();
 });
 
