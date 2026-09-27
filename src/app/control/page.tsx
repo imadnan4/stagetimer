@@ -3,7 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatDuration } from "@/lib/time";
-import { apiBase, wsBase, type ServerMessage, type TimerStatus } from "@/lib/wsClient";
+import { wsBase, type ServerMessage, type TimerStatus } from "@/lib/wsClient";
+import { apiFetch } from "@/lib/api";
+import { useAuth } from "@/components/auth/AuthProvider";
 import { QRCodeSVG } from "qrcode.react";
 import { buildDisplayJoinUrl } from "@/lib/sessionLinks";
 import { Button } from "@/components/ui/button";
@@ -17,6 +19,7 @@ declare global {
 
 export default function ControlPage() {
   const router = useRouter();
+  const { entitlement, openPaywall } = useAuth();
   const [theme, setTheme] = useState<"quartz" | "dark">("quartz");
   const [presetMs, setPresetMs] = useState(5 * 60 * 1000);
   const [allowOvertime, setAllowOvertime] = useState(false);
@@ -29,6 +32,7 @@ export default function ControlPage() {
   const [remaining, setRemaining] = useState<number | null>(null);
   const [clockOffsetMs, setClockOffsetMs] = useState(0); // serverNow - clientNow
   const [sessionEnded, setSessionEnded] = useState(false);
+  const [blockedReason, setBlockedReason] = useState<"anonymous" | "unpaid" | null>(null);
   const [qrOpen, setQrOpen] = useState(false);
   const [displayJoinUrl, setDisplayJoinUrl] = useState("");
   const [displayJoinToken, setDisplayJoinToken] = useState<string | null>(null);
@@ -63,13 +67,27 @@ export default function ControlPage() {
 
     (async () => {
       try {
-        const res = await fetch(`${apiBase()}/api/session`, {
+        const { status, data: json } = await apiFetch<{
+          code?: string;
+          displayToken?: string;
+          controllerToken?: string;
+          reason?: string;
+        }>('/api/session', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ presetMs, allowOvertime })
+          body: { presetMs, allowOvertime },
         });
-        const json = await res.json();
         if (cancelled) return;
+        if (status === 402) {
+          const reason = json?.reason === 'unpaid' ? 'unpaid' : 'anonymous';
+          setBlockedReason(reason);
+          openPaywall(reason);
+          return;
+        }
+        if (!json || typeof json.code !== 'string') {
+          setError('Unable to create a session. Please try again.');
+          return;
+        }
+        setBlockedReason(null);
         setCode(json.code);
         setDisplayJoinToken(typeof json.displayToken === 'string' ? json.displayToken : null);
         // open WS and join as controller
@@ -185,6 +203,26 @@ export default function ControlPage() {
                 {code}
               </span>
             </p>
+            <p className="text-muted-foreground text-sm font-medium mt-1.5">
+              {entitlement.entitled ? (
+                <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                  Unlimited lifetime plan
+                </span>
+              ) : (
+                <>
+                  Free plan
+                  {typeof entitlement.remaining === "number" && (
+                    <>
+                      {" · "}
+                      <span className="text-foreground font-semibold">
+                        {entitlement.remaining}
+                      </span>{" "}
+                      rooms left
+                    </>
+                  )}
+                </>
+              )}
+            </p>
           </div>
           <div className="flex items-center gap-3">
             <Button
@@ -227,6 +265,23 @@ export default function ControlPage() {
           </div>
         )}
 
+        {blockedReason && (
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-200 p-4 text-sm font-medium flex flex-wrap items-center justify-between gap-3">
+            <span>
+              {blockedReason === "anonymous"
+                ? "You've used all your free rooms. Create a free account, then unlock unlimited rooms forever for a one-time $5."
+                : "Your free rooms are used up. Unlock unlimited rooms forever for a one-time $5."}
+            </span>
+            <Button variant="primary" onClick={() => openPaywall(blockedReason)}>
+              {blockedReason === "anonymous"
+                ? "Sign up / Sign in"
+                : "Get lifetime access — $5"}
+            </Button>
+          </div>
+        )}
+
+        {!blockedReason && (
+          <>
         <section className="rounded-2xl p-6 bg-card text-card-foreground border border-border/40 shadow-xl shadow-black/10 ring-1 ring-foreground/10">
           <div className="flex flex-col lg:flex-row items-center justify-between gap-8">
             <div className="flex flex-col sm:flex-row items-center gap-8 w-full">
@@ -374,6 +429,8 @@ export default function ControlPage() {
             </div>
           </div>
         </section>
+          </>
+        )}
       </div>
 
       {sessionEnded && (

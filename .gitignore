@@ -50,3 +50,4 @@ skills-lock.json
 docs/
 # Local Netlify folder
 .netlify
+.neon

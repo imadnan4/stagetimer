@@ -1,237 +1,178 @@
 # Stagetimer Web
 
-Stagetimer is a browser-based presentation timer with one controller and many displays, synchronized in real time.
+Stagetimer is a browser-based presentation timer with one controller and many
+displays, synchronized in real time.
 
 ## Architecture
 
-- Frontend: Next.js app (routes: /, /control, /display)
-- Backend: Express + WebSocket server in server/server.js
-- Deployment model:
-	- Frontend on Netlify (static export)
-	- Backend on Heroku (Docker container)
+- **Frontend**: Next.js static export (routes: `/`, `/control`, `/display`),
+  deployed to Netlify.
+- **Backend**: Express + WebSocket server (`server/server.js`), deployed to
+  Heroku as a Docker container. This split is required because the app needs a
+  persistent WebSocket backend.
+- **Database**: Neon Postgres (`app` schema) stores free-tier usage counters and
+  lifetime entitlements.
+- **Auth**: Neon Managed Better Auth (hosted Better Auth) with Google and
+  email/password sign-in. The backend verifies the JWT against the branch JWKS.
+- **Payments**: Polar hosts the one-time `$5` "Professional" lifetime product.
+  Checkout sessions are created server-side; a signed webhook grants access.
 
-This split is required because the app needs a persistent WebSocket backend.
+### Access model
 
-## Donations
+Visitors can create **5 free rooms** without an account. Usage is counted
+server-side against hashed identities (IP + an anonymous device id, and the user
+id once signed in), so clearing local storage or signing in with a fresh account
+does not reset the allowance. Once the limit is reached:
 
-"Support the Creator" button (home page) uses a Lemon Squeezy checkout overlay (lemon.js). Backend exposes `POST /api/lemon/webhook` which verifies the `X-Signature` HMAC-SHA256 header against `LEMON_SQUEEZY_WEBHOOK_SECRET` and tallies `order_created`/`order_refunded` events in memory (`GET /api/donations`).
+- Anonymous users are asked to sign up / sign in.
+- Signed-in but unpaid users are asked to buy the one-time lifetime upgrade.
+- Users with a lifetime entitlement get unlimited rooms.
+
+The gate lives on `POST /api/session` (the single place a room is created), and
+the UI surfaces it on `/control` and every "Start Timer" entry point.
 
 ## Tech Stack
 
-- Next.js 15
-- React 19
-- TypeScript
-- Tailwind CSS v4
-- Express + ws
+- Next.js 15, React 19, TypeScript, Tailwind CSS v4
+- Express + `ws`, `pg`, `jose`
+- Better Auth (client) + Polar
+- Vitest (server + jsdom frontend)
 - npm (single package manager — only `package-lock.json` is tracked)
 
 ## Local Development
 
-Prerequisites:
-
-- Node.js 20+
-- npm
-- Free ports: 3000 (frontend) and 8787 (backend)
-
-Install dependencies:
+Prerequisites: Node.js 20+, npm, free ports 3000 (frontend) and 8787 (backend).
 
 ```bash
 npm install
+cp .env.example .env.local   # then fill in the values
+npm run dev:all              # backend + frontend together
 ```
 
-Run frontend and backend together:
+`npm run dev:all` loads `.env.local` into the backend automatically (see
+`scripts/run-server.js`). Without `DATABASE_URL` the backend falls back to an
+in-memory store, so the frontend runs even before you connect Neon.
 
-```bash
-npm run dev:all
-```
-
-Open:
-
-- http://localhost:3000
+Open http://localhost:3000.
 
 ## Environment Variables
 
-Do not upload .env files to Netlify or Heroku.
-Set variables in each platform dashboard (or via CLI).
+Never commit real values. Set them in the Netlify and Heroku dashboards (or via
+CLI); `.env.example` lists the full set.
 
-Use .env.example as reference values.
+Frontend (Netlify, Production context) — inlined into the public bundle:
 
-Frontend variables (Netlify, Production context):
+- `NEXT_PUBLIC_API_URL=https://<backend>.herokuapp.com`
+- `NEXT_PUBLIC_WS_URL=wss://<backend>.herokuapp.com/ws`
+- `NEXT_PUBLIC_NEON_AUTH_URL=https://<branch>.neonauth.<region>.aws.neon.tech/neondb/auth`
 
-- NEXT_PUBLIC_API_URL=https://your-backend.herokuapp.com
-- NEXT_PUBLIC_WS_URL=wss://your-backend.herokuapp.com/ws
-	 - NEXT_PUBLIC_LEMON_SQUEEZY_CHECKOUT_URL=https://your-store.lemonsqueezy.com/checkout/buy/VARIANT_ID?embed=1
+Backend (Heroku) — secrets, server-side only:
 
-Backend variables (Heroku):
+- `NODE_ENV=production`
+- `PUBLIC_ORIGIN=https://<site>.netlify.app`
+- `CORS_ALLOW_ALL=0`
+- `SESSION_TTL_MINUTES=120`
+- `SESSION_CODE_ALPHABET=23456789ABCDEFGHJKMNPQRSTUVWXYZ`
+- `DATABASE_URL` — Neon pooled connection string
+- `NEON_AUTH_BASE_URL`, `NEON_AUTH_JWKS_URL` — from `neon env pull`
+- `FREE_ROOM_LIMIT=5`
+- `USAGE_HASH_SALT` — long random string used to hash identities
+- `POLAR_SERVER=production`
+- `POLAR_ACCESS_TOKEN`, `POLAR_PRODUCT_ID`, `POLAR_ORGANIZATION_ID`
+- `POLAR_WEBHOOK_SECRET`
+- `PORT` is injected automatically by Heroku
 
-- NODE_ENV=production
-- PUBLIC_ORIGIN=https://your-site.netlify.app
-- CORS_ALLOW_ALL=0
-- SESSION_TTL_MINUTES=120
-- SESSION_CODE_ALPHABET=23456789ABCDEFGHJKMNPQRSTUVWXYZ
-- LEMON_SQUEEZY_WEBHOOK_SECRET=<signing secret from the Lemon Squeezy dashboard>
-- PORT is injected automatically by Heroku
+## Neon Auth setup
 
-## Easy Deployment Guide
-
-### Step 1: Deploy backend to Heroku
-
-Prerequisites: Heroku CLI logged in (`heroku login`), Docker available.
-
-1. Create the app (new apps get a hashed `https://<name>-<hash>.herokuapp.com` URL — use that URL everywhere):
-   - `heroku create stage-timer-backend --region us`
-2. Switch to the container stack:
-   - `heroku stack:set container --app stage-timer-backend`
-3. Set backend environment variables (from the list above).
-4. Build and push the Docker image from server/:
-   - `cd server && heroku container:push web --app stage-timer-backend`
-5. Release:
-   - `heroku container:release web --app stage-timer-backend`
-6. Verify health endpoint:
+The project is linked to a Neon branch via `neon.ts` + `.neon` (both safe to
+commit). Enable Managed Better Auth and trusted domains from the CLI:
 
 ```bash
-curl https://your-app-<hash>.herokuapp.com/api/health
+neon link --project-id <project> --branch production -y
+neon neon-auth domain add https://<site>.netlify.app
+neon neon-auth oauth-provider add --provider-id google
+neon config apply            # applies neon.ts (auth: true)
 ```
 
-Expected response:
+`neon env pull` writes `DATABASE_URL`, `NEON_AUTH_BASE_URL` and
+`NEON_AUTH_JWKS_URL` into `.env` (git-ignored).
 
-```json
-{"ok":true}
-```
+## Polar setup
 
-Notes:
+1. Create the one-time `$5` product in the Polar dashboard.
+2. Create an **organization access token** with `checkouts:write`,
+   `customers:read/write`, `customer_sessions:write`, `orders:read`,
+   `products:read`, `subscriptions:read`, `benefits:read`.
+3. Create a webhook pointing at `https://<backend>.herokuapp.com/api/polar/webhook`
+   subscribed to `order.paid`, `order.created` and `order.refunded` (Raw format).
+4. Put the token, product id, organization id and webhook secret in the Heroku
+   config.
 
-- The Docker daemon's containerd image store breaks `heroku container:push` with `error from registry: unsupported`. Workaround: `docker save` the image, then push with `crane push` (go-containerregistry) using the Heroku registry credentials from `~/.docker/config.json`, then `heroku container:release web`.
-- The server is single-dyno / demo-oriented by design: sessions, donation totals, and webhook dedup state live in memory and reset on every restart. Do not scale to multiple dynos without moving this state to shared durable storage. Eco dynos sleep after ~30 minutes of inactivity, which also wakes the in-memory state fresh.
-- The server sends a WebSocket ping every 30s so Heroku's router does not idle-drop connections.
-- Webhooks registered in Lemon Squeezy must point to the hashed app URL, e.g. `https://stage-timer-backend-9a2d3f8dcbec.herokuapp.com/api/lemon/webhook`.
+Webhooks are verified with the Standard Webhooks scheme (`webhook-id`,
+`webhook-timestamp`, `webhook-signature`) and are idempotent.
 
-### Step 2: Deploy frontend to Netlify
+## Deployment
 
-1. Create a Netlify site from this GitHub repository.
-2. Build settings:
-	 - Build command: npm run build
-	 - Publish directory: out
-	 - Node version: 20
-3. Add Netlify environment variable:
-	 - NETLIFY_NEXT_PLUGIN_SKIP=true
-4. Add frontend environment variables in Netlify Production context:
-	 - NEXT_PUBLIC_API_URL=https://your-backend-<hash>.herokuapp.com
-	 - NEXT_PUBLIC_WS_URL=wss://your-backend-<hash>.herokuapp.com/ws
-	 - NEXT_PUBLIC_LEMON_SQUEEZY_CHECKOUT_URL=https://your-store.lemonsqueezy.com/checkout/buy/VARIANT_ID?embed=1
-5. Trigger a production deploy.
-
-### Step 3: Final CORS alignment
-
-1. Update Heroku backend variable:
-	 - PUBLIC_ORIGIN=https://your-final-site.netlify.app
-2. Redeploy backend service.
-3. Redeploy frontend so all values are in sync.
-
-### Step 4: End-to-end test
-
-1. Open frontend home page.
-2. Create a controller session.
-3. Join display with session code.
-4. Test start, pause, resume, reset, +30s, -30s, and end session.
-5. Test the "Support the Creator" overlay checkout (use Lemon Squeezy test mode first).
-
-## Optional CLI Commands
-
-Netlify:
+### Backend (Heroku, container stack)
 
 ```bash
-npx netlify login
-npx netlify init
-npx netlify env:set NETLIFY_NEXT_PLUGIN_SKIP true --context production
-npx netlify env:set NEXT_PUBLIC_API_URL https://your-backend-<hash>.herokuapp.com --context production
-npx netlify env:set NEXT_PUBLIC_WS_URL wss://your-backend-<hash>.herokuapp.com/ws --context production
-npx netlify env:set NEXT_PUBLIC_LEMON_SQUEEZY_CHECKOUT_URL https://your-store.lemonsqueezy.com/checkout/buy/<id>?embed=1 --context production
-NEXT_PUBLIC_API_URL=... NEXT_PUBLIC_WS_URL=... NEXT_PUBLIC_LEMON_SQUEEZY_CHECKOUT_URL=... npm run build
-npx netlify deploy --prod --no-build --dir out
+heroku config:set \
+  DATABASE_URL=... NEON_AUTH_BASE_URL=... NEON_AUTH_JWKS_URL=... \
+  USAGE_HASH_SALT=... POLAR_ACCESS_TOKEN=... POLAR_PRODUCT_ID=... \
+  POLAR_WEBHOOK_SECRET=... --app stage-timer-backend
+cd server && heroku container:push web --app stage-timer-backend
+heroku container:release web --app stage-timer-backend
 ```
 
-Heroku:
+The server runs SQL migrations from `server/migrations/` on startup. Grants and
+usage live in Neon, so they survive restarts and scale beyond a single dyno.
+
+> **Docker containerd workaround.** On engines using the containerd image store,
+> `heroku container:push` fails with `error from registry: unsupported`. Build
+> and save locally, then push with `crane`:
+>
+> ```bash
+> docker build -t registry.heroku.com/stage-timer-backend/web ./server
+> docker save registry.heroku.com/stage-timer-backend/web -o /tmp/app.tar
+> crane push /tmp/app.tar registry.heroku.com/stage-timer-backend/web
+> heroku container:release web --app stage-timer-backend
+> ```
+
+### Frontend (Netlify)
+
+Netlify builds `npm run build` and publishes `out/`; the site auto-deploys from
+`main`. Production env vars: `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_WS_URL`,
+`NEXT_PUBLIC_NEON_AUTH_URL`.
+
+## Testing
 
 ```bash
-heroku create stage-timer-backend --region us
-heroku stack:set container --app stage-timer-backend
-heroku config:set NODE_ENV=production PUBLIC_ORIGIN=https://your-site.netlify.app CORS_ALLOW_ALL=0 SESSION_TTL_MINUTES=120 SESSION_CODE_ALPHABET=23456789ABCDEFGHJKMNPQRSTUVWXYZ --app stage-timer-backend
-heroku config:set LEMON_SQUEEZY_WEBHOOK_SECRET --prompt --app stage-timer-backend
-cd server && heroku container:push web --app stage-timer-backend && heroku container:release web --app stage-timer-backend
-heroku logs --tail --app stage-timer-backend
-```
-
-## CodeRabbit (local reviews before commit)
-
-The CodeRabbit CLI (`cr`) reviews local git changes before they are committed. It is already installed and authenticated (`coderabbit auth status`).
-
-Quick usage:
-
-```bash
-cr review --agent -t uncommitted   # review staged + local edits, structured JSON
-cr review --agent --base develop   # review everything vs the empty develop baseline
-cr doctor                          # diagnose install/auth/git issues
-```
-
-For a full-repo review (baseline vs empty `develop` branch, which the CLI's
-three-dot diff cannot do directly because there is no merge base), use a
-worktree sandbox:
-
-```bash
-git worktree add /tmp/cr-wt develop
-rsync -a --exclude node_modules --exclude .git --exclude out --exclude .next --exclude .netlify . /tmp/cr-wt/
-cd /tmp/cr-wt
-setsid nohup cr review --agent --include-untracked > /tmp/cr-review.json 2>/tmp/cr-review.err < /dev/null &
-```
-
-Reviews take 7-30+ minutes for a full repo; run them in the background.
-
-## Testing (Vitest)
-
-Unit + integration tests live in `tests/` (server tests in `tests/server/`,
-frontend/component tests in `tests/frontend/`). Server tests boot the real
-Express + WebSocket server on an ephemeral port (see `server/server.js`, which
-exports `app`/`start` and only listens when run directly).
-
-```bash
-npm test            # run everything
-npm run test:watch  # watch mode
-npm run test:server   # REST + webhook HMAC + WebSocket flows
+npm test              # everything
+npm run test:server   # REST, auth gating, Polar webhook verification
 npm run test:frontend # libs + components (jsdom)
+npx tsc --noEmit
+npm run lint
 ```
 
-Covered so far: webhook HMAC validation (valid/invalid signatures, malformed
-totals, missing secret), donation tallies and refunds, session creation,
-WebSocket join/auth/role/end flows, `formatDuration`, session link building and
-QR-scan parsing, API/WS URL fallbacks, and the Support (Lemon Squeezy) button
-overlay lifecycle.
+Server tests boot the real Express + WebSocket server on an ephemeral port.
+Without `DATABASE_URL` they exercise the in-memory store; each test re-imports
+the module so state is isolated.
 
 ## Troubleshooting
 
-- Netlify blocked Next.js due CVE policy
-	- Upgrade next and eslint-config-next to a patched release, then redeploy.
-
-- Frontend cannot connect to backend
-	- Confirm NEXT_PUBLIC_API_URL and NEXT_PUBLIC_WS_URL on Netlify use the hashed Heroku app URL (new apps no longer resolve at `<name>.herokuapp.com`).
-	- Confirm PUBLIC_ORIGIN on Heroku matches Netlify production URL.
-
-- `error from registry: unsupported` on `heroku container:push`
-	- Docker containerd image store incompatibility; push with `crane` instead (see notes in Step 1).
-
-- Webhook returns 401 in Heroku logs
-	- The X-Signature header must be computed with the exact same secret as LEMON_SQUEEZY_WEBHOOK_SECRET, over the raw request body.
-
-- Lemon Squeezy webhooks not firing
-	- Test-mode webhooks only fire for test-mode orders; recreate/update the webhook after disabling test mode.
-
-- Checkout link 404s ("product not found")
-	- New Lemon Squeezy stores/products are reviewed before going live. While pending, only the dashboard preview checkout URL works; the `checkout/buy/<numeric-variant-id>` URL starts working once the store review passes and you activate the store. Keep `?embed=1` so the checkout opens as the overlay instead of a new tab.
-	- `next/font` fails to fetch Google Fonts in some environments: the fonts are self-hosted in src/app/fonts/, so remove that workaround only if you have network access during builds.
+- **Frontend cannot reach the backend** — confirm `NEXT_PUBLIC_API_URL` /
+  `NEXT_PUBLIC_WS_URL` use the hashed Heroku URL and `PUBLIC_ORIGIN` matches the
+  Netlify production URL.
+- **Google sign-in redirects fail** — add the Netlify domain as a Neon Auth
+  trusted domain (`neon neon-auth domain list`).
+- **Checkout returns 401** — the request must include a valid Neon Auth JWT
+  (`Authorization: Bearer`); the frontend fetches it from `/token`.
+- **Webhook returns 401** — the signature must be computed with
+  `POLAR_WEBHOOK_SECRET` over `${webhook-id}.${webhook-timestamp}.${body}`.
 
 ## Notes
 
-- Sessions are in-memory (no database): restarting backend clears active sessions.
-- Donation tallies are in-memory too: restarting clears /api/donations.
-- For production reliability, enable auto-restart and monitor Heroku logs.
-
+- Active timer sessions are in-memory on the backend (restart clears them).
+  Usage counters and entitlements are durable in Neon.
+- The server sends a WebSocket ping every 30s so Heroku's router does not
+  idle-drop connections.
