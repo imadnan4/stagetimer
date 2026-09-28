@@ -5,9 +5,18 @@ import { StageTimerLogo } from "@/components/brand/StageTimerLogo";
 import { SiteFooter } from "@/components/sections/footer";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy — StageTimer",
+  title: "Privacy Policy",
   description:
-    "How StageTimer collects, uses, and protects your information when you use the real-time stage timer.",
+    "Learn how StageTimer collects, uses, and protects your information when you use our real-time presentation timer and confidence monitor.",
+  alternates: {
+    canonical: "/privacy",
+  },
+  openGraph: {
+    title: "Privacy Policy | StageTimer",
+    description:
+      "Learn how StageTimer collects, uses, and protects your information when you use our real-time presentation timer and confidence monitor.",
+    url: "/privacy",
+  },
 };
 
 const CONTACT_EMAIL = "priadn544@gmail.com";
