@@ -5,9 +5,18 @@ import { StageTimerLogo } from "@/components/brand/StageTimerLogo";
 import { SiteFooter } from "@/components/sections/footer";
 
 export const metadata: Metadata = {
-  title: "Terms of Service — StageTimer",
+  title: "Terms of Service",
   description:
-    "The terms that govern your use of the StageTimer real-time stage timer and confidence monitor.",
+    "The terms of service governing your use of StageTimer, including room creation allowances, lifetime access, and usage guidelines.",
+  alternates: {
+    canonical: "/terms",
+  },
+  openGraph: {
+    title: "Terms of Service | StageTimer",
+    description:
+      "The terms of service governing your use of StageTimer, including room creation allowances, lifetime access, and usage guidelines.",
+    url: "/terms",
+  },
 };
 
 const CONTACT_EMAIL = "priadn544@gmail.com";
