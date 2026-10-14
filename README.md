@@ -126,18 +126,28 @@ boot scripts live in [`deploy/railway/`](deploy/railway/).
 2. **Set the env vars** from `.env.example` on the service (Neon, Polar,
    `PUBLIC_ORIGIN`, `USAGE_HASH_SALT`, …). Secrets live here, never in git.
 3. **Install onto the volume** — from your checkout:
+
    ```bash
    railway link
    railway ssh -- sh -s < deploy/railway/install.sh
    ```
+
    This puts Node 22 + `server/` on `/config` and writes
    `/config/stagetimer/.env` from the service's env vars.
-4. **Enable autostart** — Settings → Deploy → *Custom Start Command*. Keep the
-   image's existing command and only **prepend** our bootstrap; it registers the
-   `/railway-healthz` healthcheck route, so replacing it makes every deploy fail:
+4. **Enable autostart** — Settings → Deploy → *Custom Start Command*. Copy the
+   command already shown there (the image's own command) and **prepend** our
+   bootstrap to its body — i.e. replace `<original command body>` below with
+   everything the field had after its own `/bin/sh -c '`:
+
    ```
    /bin/sh -c '/config/stagetimer/bootstrap.sh; <original command body>'
    ```
+
+   Don't drop the original body: for this image it registers the
+   `/railway-healthz` route the healthcheck calls, so replacing the command makes
+   deploys time out. Note the `;` (not `&&`): if `bootstrap.sh` fails the desktop
+   still boots, but `/timer` may be missing — check
+   `/config/stagetimer/logs/backend.log`.
 5. **Redeploy.** Generate a domain if you don't have one — the API is then at
    `https://<domain>/timer` and the socket at `wss://<domain>/timer/ws`.
    `GET /timer/api/health` should return `{"ok":true}`.
