@@ -8,8 +8,9 @@ displays, synchronized in real time.
 - **Frontend**: Next.js static export (routes: `/`, `/control`, `/display`),
   deployed to Netlify.
 - **Backend**: Express + WebSocket server (`server/server.js`), deployed to
-  Heroku as a Docker container. This split is required because the app needs a
-  persistent WebSocket backend.
+  Railway as a container with a persistent volume (see
+  [Backend (Railway)](#backend-railway)). This split is required because the app
+  needs a persistent WebSocket backend.
 - **Database**: Neon Postgres (`app` schema) stores free-tier usage counters and
   lifetime entitlements.
 - **Auth**: Neon Managed Better Auth (hosted Better Auth) with Google and
@@ -112,6 +113,38 @@ Webhooks are verified with the Standard Webhooks scheme (`webhook-id`,
 `webhook-timestamp`, `webhook-signature`) and are idempotent.
 
 ## Deployment
+
+### Backend (Railway)
+
+The backend needs a host with a **persistent volume** (timers are in-memory;
+usage and entitlements live in Neon). We run it on the
+`linuxserver/webtop:debian-xfce` image and serve the API under `/timer`. The
+boot scripts live in [`deploy/railway/`](deploy/railway/).
+
+1. **Create the service** — Railway → New → *Deploy from a Docker image* →
+   `linuxserver/webtop:debian-xfce`. Add a **volume mounted at `/config`**.
+2. **Set the env vars** from `.env.example` on the service (Neon, Polar,
+   `PUBLIC_ORIGIN`, `USAGE_HASH_SALT`, …). Secrets live here, never in git.
+3. **Install onto the volume** — from your checkout:
+   ```bash
+   railway link
+   railway ssh -- sh -s < deploy/railway/install.sh
+   ```
+   This puts Node 22 + `server/` on `/config` and writes
+   `/config/stagetimer/.env` from the service's env vars.
+4. **Enable autostart** — Settings → Deploy → *Custom Start Command*. Keep the
+   image's existing command and only **prepend** our bootstrap; it registers the
+   `/railway-healthz` healthcheck route, so replacing it makes every deploy fail:
+   ```
+   /bin/sh -c '/config/stagetimer/bootstrap.sh; <original command body>'
+   ```
+5. **Redeploy.** Generate a domain if you don't have one — the API is then at
+   `https://<domain>/timer` and the socket at `wss://<domain>/timer/ws`.
+   `GET /timer/api/health` should return `{"ok":true}`.
+6. **Point clients at it** — Netlify: `NEXT_PUBLIC_API_URL=https://<domain>/timer`
+   and `NEXT_PUBLIC_WS_URL=wss://<domain>/timer/ws`; Polar webhook →
+   `https://<domain>/timer/api/polar/webhook`; add the site to Neon Auth trusted
+   domains (`neon neon-auth domain add https://<site>.netlify.app`).
 
 ### Backend (Heroku, container stack)
 
